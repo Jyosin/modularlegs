@@ -1,7 +1,7 @@
 
-# Reconfigurable Legged Metamachines that Run on Autonomous Modular Legs
+# Agile Legged Locomotion in Reconfigurable Modular Robots
 
-This repository contains the codebase for the paper "Reconfigurable Legged Metamachines that Run on Autonomous Modular Legs" (under review). The code is currently undergoing active development and cleanup. In the coming updates, we will release additional training examples, debugging tools, pretrained models, tutorials, a more user-friendly API, and documentation for customizing the morphology optimization pipeline.
+This repository contains the codebase for the paper "Agile Legged Locomotion in Reconfigurable Modular Robots". Development is ongoing as we package core functionality into the [`MetaMachine`](https://github.com/Chenaah/Metamachine) library, a platform designed to support multiple modular robot systems. Our plan is to gradually refactor this codebase to depend on `MetaMachine` and use its APIs.
 
 Stay tuned for improvements and expanded functionality. If you run into any issues or have suggestions, we welcome your feedback and contributions!
 
@@ -76,12 +76,14 @@ python modularlegs/scripts/evolve.py evolution_vae_asym_air1s
 If you find this work useful, please cite:
 
 ```bibtex
-@misc{yu2025reconfigurable,
-  title={Reconfigurable Legged Metamachines that Run on Autonomous Modular Legs},
-  author={Chen Yu and David Matthews and Jingxian Wang and Jing Gu and Douglas Blackiston and Michael Rubenstein and Sam Kriegman},
-  year={2025},
-  eprint={2505.00784},
-  archivePrefix={arXiv},
-  primaryClass={cs.RO}
+@article{yu2026agile,
+  title={Agile legged locomotion in reconfigurable modular robots},
+  author={Yu, Chen and Matthews, David and Wang, Jingxian and Gu, Jing and Blackiston, Douglas and Rubenstein, Michael and Kriegman, Sam},
+  journal={Proceedings of the National Academy of Sciences},
+  volume={123},
+  number={10},
+  pages={e2519129123},
+  year={2026},
+  publisher={National Academy of Sciences}
 }
 ```
