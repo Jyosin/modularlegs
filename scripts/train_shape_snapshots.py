@@ -22,8 +22,9 @@ EXPERIMENTS = [
     ("extra_balls", "config/shape_experiments/sim_train_shape_extra_balls.yaml"),
 ]
 
-CHUNK_STEPS = 200
-VIDEO_STEPS = 120
+DEFAULT_TARGET_STEPS = 1_000_000
+DEFAULT_SNAPSHOT_INTERVAL = 100_000
+DEFAULT_VIDEO_STEPS = 120
 
 
 def make_train_env(conf):
@@ -64,19 +65,19 @@ def prepare_visual_conf(conf, vis_dir, name):
     return conf
 
 
-def record_snapshot(name, cfg_name, model_path, total_steps):
+def record_snapshot(name, cfg_name, model_path, total_steps, video_steps):
     conf = load_cfg(cfg_name, alg="sbx")
     vis_dir = os.path.join(conf.logging.data_dir, "visualization")
     os.makedirs(vis_dir, exist_ok=True)
     conf = prepare_visual_conf(conf, vis_dir, name)
 
     base_env = ZeroSim(conf)
-    env = gym.wrappers.TimeLimit(base_env, max_episode_steps=VIDEO_STEPS)
+    env = gym.wrappers.TimeLimit(base_env, max_episode_steps=video_steps)
     env = RecordVideo(
         env,
         video_folder=vis_dir,
         step_trigger=lambda step: step == 0,
-        video_length=VIDEO_STEPS,
+        video_length=video_steps,
         name_prefix=f"step_{total_steps}",
         fps=int(1 / conf.robot.dt),
         disable_logger=True,
@@ -86,7 +87,7 @@ def record_snapshot(name, cfg_name, model_path, total_steps):
     obs, _ = env.reset()
     iio.imwrite(os.path.join(vis_dir, f"step_{total_steps}_preview.png"), base_env.render())
     with open(os.devnull, "w") as devnull, contextlib.redirect_stdout(devnull):
-        for _ in range(VIDEO_STEPS):
+        for _ in range(video_steps):
             action, _ = model.predict(obs, deterministic=True)
             obs, _, terminated, truncated, _ = env.step(action)
             if terminated or truncated:
@@ -107,8 +108,15 @@ def get_existing_max_step(out_dir):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--only", nargs="*", default=None)
-    parser.add_argument("--target-steps", type=int, default=3000)
+    parser.add_argument("--target-steps", type=int, default=DEFAULT_TARGET_STEPS)
+    parser.add_argument("--snapshot-interval", type=int, default=DEFAULT_SNAPSHOT_INTERVAL)
+    parser.add_argument("--video-steps", type=int, default=DEFAULT_VIDEO_STEPS)
+    parser.add_argument("--no-video", action="store_true")
     args = parser.parse_args()
+    if args.snapshot_interval <= 0:
+        raise ValueError("--snapshot-interval must be positive")
+    if args.video_steps <= 0:
+        raise ValueError("--video-steps must be positive")
 
     experiments = EXPERIMENTS
     if args.only:
@@ -129,13 +137,17 @@ def main():
         model = load_model(model_path if os.path.exists(model_path) else None, env, sbx.CrossQ)
         model.set_logger(configure(out_dir, ["stdout", "csv", "tensorboard"]))
 
-        for total_steps in range(start_steps + CHUNK_STEPS, args.target_steps + 1, CHUNK_STEPS):
+        total_steps = start_steps
+        while total_steps < args.target_steps:
+            chunk_steps = min(args.snapshot_interval, args.target_steps - total_steps)
             with open(os.devnull, "w") as devnull, contextlib.redirect_stdout(devnull):
-                model.learn(total_timesteps=CHUNK_STEPS, reset_num_timesteps=False)
+                model.learn(total_timesteps=chunk_steps, reset_num_timesteps=False)
+            total_steps += chunk_steps
             snapshot_model = os.path.join(out_dir, f"rl_model_{total_steps}.zip")
             model.save(snapshot_model)
             model.save(model_path)
-            record_snapshot(name, cfg_name, snapshot_model, total_steps)
+            if not args.no_video:
+                record_snapshot(name, cfg_name, snapshot_model, total_steps, args.video_steps)
             print(f"saved {name} snapshot at {total_steps} steps")
 
         env.close()
