@@ -1,0 +1,54 @@
+agent:
+  action_scale: 1
+  clip_actions: 1.2
+  clip_observations: 100
+  control_mode: position
+  gravity_vec: [0, 0, -1]
+  include_history_steps: 3
+  num_act: 1
+  num_obs: 9
+  obs_version: sensed_proprioception
+  reward_version: cheat_plateau_jing
+  predefined_commands: [8, 0]
+  reward_params: [1, 0, -0.1]
+
+interface: {}
+
+logging:
+  data_dir: null
+  log_raw_data: false
+  print_data: false
+
+robot:
+  dt: 0.05
+  mode: sim
+  motor_range: [-1.5708, 1.5708]
+  theta: 0.4625123
+  kp: 8.
+  kd: 0.2
+
+sim:
+  asset_file: m3air1s.xml
+  init_pos: [0, 0, 0.2]
+  init_quat: y
+  randomize_orientation: false
+  randomize_ini_vel: false
+  render: true
+  latency_scheme: 0
+  random_latency_scheme: false
+  randomize_mass: false
+  randomize_friction: false
+  randomize_rolling_friction: false
+  noisy_actions: false
+  noisy_observations: false
+  randomize_damping: false
+
+trainer:
+  algorithm: CrossQ
+  joystick: false
+  load_replay_buffer: null
+  load_run: null
+  max_ep_len: 1000
+  max_test_ep_len: 1000
+  mode: play
+  wandb_on: false

@@ -25,6 +25,7 @@ class KBHit:
     def __init__(self):
         '''Creates a KBHit object that you can call to do various keyboard things.
         '''
+        self.enabled = True
 
         if os.name == 'nt':
             pass
@@ -33,8 +34,15 @@ class KBHit:
 
             # Save the terminal settings
             self.fd = sys.stdin.fileno()
-            self.new_term = termios.tcgetattr(self.fd)
-            self.old_term = termios.tcgetattr(self.fd)
+            if not sys.stdin.isatty():
+                self.enabled = False
+                return
+            try:
+                self.new_term = termios.tcgetattr(self.fd)
+                self.old_term = termios.tcgetattr(self.fd)
+            except termios.error:
+                self.enabled = False
+                return
 
             # New terminal setting unbuffered
             self.new_term[3] = (self.new_term[3] & ~termios.ICANON & ~termios.ECHO)
@@ -52,6 +60,8 @@ class KBHit:
             pass
 
         else:
+            if not self.enabled:
+                return
             termios.tcsetattr(self.fd, termios.TCSAFLUSH, self.old_term)
 
 
@@ -66,6 +76,8 @@ class KBHit:
             return msvcrt.getch().decode('utf-8')
 
         else:
+            if not self.enabled:
+                return ''
             return sys.stdin.read(1)
 
 
@@ -84,6 +96,8 @@ class KBHit:
             vals = [72, 77, 80, 75]
 
         else:
+            if not self.enabled:
+                return None
             c = sys.stdin.read(3)[2]
             vals = [65, 67, 66, 68]
 
@@ -97,6 +111,8 @@ class KBHit:
             return msvcrt.kbhit()
 
         else:
+            if not self.enabled:
+                return False
             dr,dw,de = select([sys.stdin], [], [], 0)
             return dr != []
 

@@ -214,7 +214,7 @@ class ActionFilterButter(ActionFilter):
         if low:
             b, a = butter(order, [low, high], btype='band')
         else:
-            b, a = butter(order, [high], btype='low')
+            b, a = butter(order, high, btype='low')
         return b, a
 
 

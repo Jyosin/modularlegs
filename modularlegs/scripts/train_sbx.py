@@ -1,7 +1,11 @@
 from collections import defaultdict
 import copy
 import os
-os.environ["MUJOCO_GL"] = "egl"
+import sys
+if sys.platform != "darwin":
+    os.environ.setdefault("MUJOCO_GL", "egl")
+elif os.environ.get("MUJOCO_GL") == "egl":
+    os.environ.pop("MUJOCO_GL")
 import pdb
 import shutil
 import time
@@ -113,7 +117,9 @@ class Trainer:
                                 disable_logger=True)
                 self.env = VecReal(self.env, max_episode_steps=1000)
 
-            elif not self.conf.sim.render and self.conf.trainer.mode in ["train", "play"]:
+            elif (not self.conf.sim.render 
+                  and self.conf.trainer.mode in ["train", "play"]
+                  and getattr(self.conf.trainer, "record_video", True)):
                 trigger = lambda t: t % 199 == 0
                 self.env = RecordVideo(self.env, 
                                 video_folder=self.conf.logging.data_dir, 
@@ -424,4 +430,3 @@ if __name__ == "__main__":
     trainer = Trainer(args.cfg)
     trainer.run()
     
-

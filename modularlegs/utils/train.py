@@ -1,6 +1,10 @@
 from collections import defaultdict
 import os
-os.environ["MUJOCO_GL"] = "egl"
+import sys
+if sys.platform != "darwin":
+    os.environ.setdefault("MUJOCO_GL", "egl")
+elif os.environ.get("MUJOCO_GL") == "egl":
+    os.environ.pop("MUJOCO_GL")
 import numpy as np
 from tqdm.rich import tqdm
 from rich.progress import track
