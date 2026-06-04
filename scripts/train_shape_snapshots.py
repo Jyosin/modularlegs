@@ -19,6 +19,7 @@ from modularlegs.utils.train import load_model
 EXPERIMENTS = [
     ("single", "config/shape_experiments/sim_train_shape_original.yaml"),
     ("quadruped", "config/shape_experiments/sim_train_shape_quadruped.yaml"),
+    ("quadruped_angle", "config/shape_experiments/sim_train_shape_quadruped_angle.yaml"),
     ("extra_balls", "config/shape_experiments/sim_train_shape_extra_balls.yaml"),
 ]
 
