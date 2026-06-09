@@ -21,6 +21,7 @@ EXPERIMENTS = [
     ("quadruped", "config/shape_experiments/sim_train_shape_quadruped.yaml"),
     ("quadruped_angle", "config/shape_experiments/sim_train_shape_quadruped_angle.yaml"),
     ("quadruped_angle_large", "config/shape_experiments/sim_train_shape_quadruped_angle_large.yaml"),
+    ("quadruped_angle_weird", "config/shape_experiments/sim_train_shape_quadruped_angle_weird.yaml"),
     ("extra_balls", "config/shape_experiments/sim_train_shape_extra_balls.yaml"),
 ]
 
