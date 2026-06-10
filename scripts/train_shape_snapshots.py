@@ -15,8 +15,13 @@ from modularlegs.utils.files import load_cfg
 from modularlegs.utils.model import XMLCompiler
 from modularlegs.utils.train import load_model
 
+try:
+    from generate_shape_variants import SHAPE_VARIANTS
+except ImportError:
+    from scripts.generate_shape_variants import SHAPE_VARIANTS
 
-EXPERIMENTS = [
+
+BASE_EXPERIMENTS = [
     ("single", "config/shape_experiments/sim_train_shape_original.yaml"),
     ("quadruped", "config/shape_experiments/sim_train_shape_quadruped.yaml"),
     ("quadruped_angle", "config/shape_experiments/sim_train_shape_quadruped_angle.yaml"),
@@ -24,6 +29,12 @@ EXPERIMENTS = [
     ("quadruped_angle_weird", "config/shape_experiments/sim_train_shape_quadruped_angle_weird.yaml"),
     ("extra_balls", "config/shape_experiments/sim_train_shape_extra_balls.yaml"),
 ]
+SHAPE_VARIANT_TEMPLATE = "config/shape_experiments/sim_train_shape_chain5.yaml"
+SHAPE_EXPERIMENTS = [
+    (asset_name.removesuffix("_air1s"), SHAPE_VARIANT_TEMPLATE, f"{asset_name}.xml")
+    for asset_name in SHAPE_VARIANTS
+]
+EXPERIMENTS = BASE_EXPERIMENTS + SHAPE_EXPERIMENTS
 
 DEFAULT_TARGET_STEPS = 1_000_000
 DEFAULT_SNAPSHOT_INTERVAL = 100_000
@@ -34,6 +45,14 @@ def make_train_env(conf):
     base_env = ZeroSim(conf)
     env = gym.wrappers.TimeLimit(base_env, max_episode_steps=1000)
     return base_env, env
+
+
+def load_experiment_cfg(cfg_name, name, asset_file=None):
+    conf = load_cfg(cfg_name, alg="sbx")
+    if asset_file is not None:
+        conf.sim.asset_file = asset_file
+        conf.logging.data_dir = os.path.join("exp", "shape_experiments", name)
+    return conf
 
 
 def prepare_visual_conf(conf, vis_dir, name):
@@ -68,8 +87,8 @@ def prepare_visual_conf(conf, vis_dir, name):
     return conf
 
 
-def record_snapshot(name, cfg_name, model_path, total_steps, video_steps):
-    conf = load_cfg(cfg_name, alg="sbx")
+def record_snapshot(name, cfg_name, asset_file, model_path, total_steps, video_steps):
+    conf = load_experiment_cfg(cfg_name, name, asset_file)
     vis_dir = os.path.join(conf.logging.data_dir, "visualization")
     os.makedirs(vis_dir, exist_ok=True)
     conf = prepare_visual_conf(conf, vis_dir, name)
@@ -126,8 +145,10 @@ def main():
         requested = set(args.only)
         experiments = [item for item in EXPERIMENTS if item[0] in requested]
 
-    for name, cfg_name in experiments:
-        conf = load_cfg(cfg_name, alg="sbx")
+    for item in experiments:
+        name, cfg_name, *asset_file = item
+        asset_file = asset_file[0] if asset_file else None
+        conf = load_experiment_cfg(cfg_name, name, asset_file)
         out_dir = conf.logging.data_dir
         os.makedirs(out_dir, exist_ok=True)
         start_steps = get_existing_max_step(out_dir)
@@ -150,7 +171,14 @@ def main():
             model.save(snapshot_model)
             model.save(model_path)
             if not args.no_video:
-                record_snapshot(name, cfg_name, snapshot_model, total_steps, args.video_steps)
+                record_snapshot(
+                    name,
+                    cfg_name,
+                    asset_file,
+                    snapshot_model,
+                    total_steps,
+                    args.video_steps,
+                )
             print(f"saved {name} snapshot at {total_steps} steps")
 
         env.close()
