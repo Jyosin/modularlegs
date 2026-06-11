@@ -4,15 +4,11 @@ import glob
 import os
 
 import gymnasium as gym
-import imageio.v3 as iio
 import sbx
 from stable_baselines3.common.logger import configure
 
-from modularlegs import LEG_ROOT_DIR
 from modularlegs.envs.env_sim import ZeroSim
-from modularlegs.envs.gym.rendering import RecordVideo
 from modularlegs.utils.files import load_cfg
-from modularlegs.utils.model import XMLCompiler
 from modularlegs.utils.train import load_model
 
 try:
@@ -56,6 +52,9 @@ def load_experiment_cfg(cfg_name, name, asset_file=None):
 
 
 def prepare_visual_conf(conf, vis_dir, name):
+    from modularlegs import LEG_ROOT_DIR
+    from modularlegs.utils.model import XMLCompiler
+
     conf.trainer.mode = "play"
     conf.trainer.device = "cpu"
     conf.sim.render = False
@@ -88,6 +87,10 @@ def prepare_visual_conf(conf, vis_dir, name):
 
 
 def record_snapshot(name, cfg_name, asset_file, model_path, total_steps, video_steps):
+    import imageio.v3 as iio
+
+    from modularlegs.envs.gym.rendering import RecordVideo
+
     conf = load_experiment_cfg(cfg_name, name, asset_file)
     vis_dir = os.path.join(conf.logging.data_dir, "visualization")
     os.makedirs(vis_dir, exist_ok=True)

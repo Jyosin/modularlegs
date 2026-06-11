@@ -14,4 +14,5 @@ python -u scripts/train_shape_snapshots.py \
   t_wide t_offset t_long_stem l_shape l_hook l_stair front_fork double_tail \
   --target-steps 1000000 \
   --snapshot-interval 100000 \
-  --video-steps 120
+  --video-steps 120 \
+  --no-video
