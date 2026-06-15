@@ -53,6 +53,31 @@ Example of generating a Mujoco XML from a configuration encoding:
 python modularlegs/sim/scripts/homemade_robots_asym.py
 ```
 
+### Record trained morphology videos with a follow camera
+The morphology policies trained under `exp/shape_experiments/<morphology>` can be
+recorded without retraining. The recorder generates temporary record configs with
+`record.camera_mode: follow` and `trainer.record.camera_mode: follow`, loads each
+`rl_model_1000000.zip`, and writes comparison videos to `recordings/`.
+
+Record every completed morphology:
+```bash
+export JAX_PLATFORMS=cpu
+export MUJOCO_GL=egl
+export PYOPENGL_PLATFORM=egl
+./scripts/record_all_morphologies.sh --model-step 1000000 --record-steps 120
+```
+
+Record selected morphologies:
+```bash
+./scripts/record_all_morphologies.sh --only chain5 arc5 l_shape --model-step 1000000
+```
+
+Output files are named with the morphology, for example:
+```text
+recordings/chain5_follow.mp4
+recordings/l_shape_follow.mp4
+```
+
 ### Run bayesian optimiation 
 To use Bayesian optimization, you'll need to install an additional package:
 ```bash

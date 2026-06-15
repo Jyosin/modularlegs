@@ -147,6 +147,7 @@ trainer:
   multiplex_type: "4+1"
 
   record:
+    camera_mode: follow
     num_envs: 100
     num_workers: 1
     record_steps: 2e6
