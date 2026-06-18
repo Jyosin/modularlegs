@@ -271,16 +271,19 @@ class RealSim(gym.Env):
         self._log_data()
         self._check_input()
 
+        done, done_info = self.brain.get_done_info()
+
         info_extra = {
                       "policy_switch": self.policy_switch,
                       "upsidedown": self.brain.is_upsidedown(),
                     #   "chopped": self.brain.is_chopped(), 
                     }
         info.update(info_extra)
+        info.update(done_info)
         info.update(reward_info)
 
 
-        return obs, reward, self.brain.is_done(), truncated, info
+        return obs, reward, done, truncated, info
 
 
 
@@ -386,8 +389,13 @@ class RealSim(gym.Env):
 
 
         info_all = reward_info
-        d = self.brain.is_done()
+        d, done_info = self.brain.get_done_info()
         done = np.array([d]*self.num_envs)
+        if isinstance(info_all, list):
+            for info in info_all:
+                info.update(done_info)
+        elif isinstance(info_all, dict):
+            info_all.update(done_info)
 
         # if np.any(done):
 
@@ -403,6 +411,4 @@ class RealSim(gym.Env):
 
 
         return obs, reward, done, truncated, info_all
-
-
 

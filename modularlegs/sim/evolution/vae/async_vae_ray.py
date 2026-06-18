@@ -43,6 +43,17 @@ from modularlegs.utils.files import load_cfg, get_log_name
 from modularlegs.utils.model import is_headless
 
 
+def _episode_max_steps(conf):
+    return None if conf.agent.done_version is None else 1000
+
+
+def _maybe_time_limit(env, conf):
+    max_episode_steps = _episode_max_steps(conf)
+    if max_episode_steps is None:
+        return env
+    return gym.wrappers.TimeLimit(env, max_episode_steps=max_episode_steps)
+
+
 
 
 class ProgressBarCallback(BaseCallback):
@@ -117,9 +128,7 @@ def train_job(conf, filter_negative=True):
     if conf.sim.render and is_headless():
         conf.sim.render = False
         # print("Running in headless mode; render is turned off!")
-    env = gym.wrappers.TimeLimit(
-                ZeroSim(conf), max_episode_steps=1000
-            )
+    env = _maybe_time_limit(ZeroSim(conf), conf)
     # Is the crash due to the video recording?
     # if not conf.sim.render:
     #     trigger = lambda t: t == int(conf.trainer.total_steps / 1000) - 1

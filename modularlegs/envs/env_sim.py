@@ -353,7 +353,7 @@ class ZeroSim(RealSim, MujocoEnv):
             extented_data_dict[f"accurate_{key}"] = copy.deepcopy(value)
             if self.noisy_observations:
                 if isinstance(value, list):
-                    pdb.set_trace()
+                    value = np.asarray(value, dtype=float)
                 extented_data_dict[key] = value + self.np_random.normal(0, self.obs_noise_std, size=value.shape)
 
         # Pure simulated data, no noise

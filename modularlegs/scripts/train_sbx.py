@@ -35,6 +35,17 @@ from modularlegs.utils.model import is_headless
 from modularlegs.utils.others import is_list_like
 
 
+def _episode_max_steps(conf):
+    return None if conf.agent.done_version is None else 1000
+
+
+def _maybe_time_limit(env, conf):
+    max_episode_steps = _episode_max_steps(conf)
+    if max_episode_steps is None:
+        return env
+    return gym.wrappers.TimeLimit(env, max_episode_steps=max_episode_steps)
+
+
 
 class Trainer:
 
@@ -96,26 +107,22 @@ class Trainer:
                 self.conf.sim.render = False
                 print("Running in headless mode; render is turned off!")
             self.unwarpped_env = ZeroSim(self.conf)
-            self.env = gym.wrappers.TimeLimit(
-                        self.unwarpped_env, max_episode_steps=1000
-                    )
+            self.env = _maybe_time_limit(self.unwarpped_env, self.conf)
             
             if self.conf.trainer.num_envs >1:
                 # TODO: this case in real world 
-                env_funs = [lambda: Monitor(gym.wrappers.TimeLimit(ZeroSim(self.conf), max_episode_steps=1000))]*self.conf.trainer.num_envs
+                env_funs = [lambda: Monitor(_maybe_time_limit(ZeroSim(self.conf), self.conf))]*self.conf.trainer.num_envs
                 self.env = DummyVecEnv(env_funs)
 
             elif self.conf.agent.num_envs > 1:
-                tenv = gym.wrappers.TimeLimit(
-                        self.unwarpped_env, max_episode_steps=1000
-                    )
+                tenv = _maybe_time_limit(self.unwarpped_env, self.conf)
                 trigger = lambda t: t % 199 == 0
                 self.env = RecordVideo(tenv, 
                                 video_folder=self.conf.logging.data_dir, 
                                 episode_trigger=trigger, 
                                 fps=1/self.conf.robot.dt,
                                 disable_logger=True)
-                self.env = VecReal(self.env, max_episode_steps=1000)
+                self.env = VecReal(self.env, max_episode_steps=_episode_max_steps(self.conf))
 
             elif (not self.conf.sim.render 
                   and self.conf.trainer.mode in ["train", "play"]
@@ -129,11 +136,9 @@ class Trainer:
         elif self.conf.robot.mode == "real":
             self.unwarpped_env = Real(self.conf)
             if self.conf.agent.num_envs == 1:
-                self.env = gym.wrappers.TimeLimit(
-                            self.unwarpped_env, max_episode_steps=1000
-                        )
+                self.env = _maybe_time_limit(self.unwarpped_env, self.conf)
             else:
-                self.env = VecReal(self.unwarpped_env, max_episode_steps=1000)
+                self.env = VecReal(self.unwarpped_env, max_episode_steps=_episode_max_steps(self.conf))
         else:
             raise ValueError("Invalid robot mode: ", self.conf.robot.mode)
         
@@ -352,9 +357,7 @@ class Trainer:
             num_envs = conf.trainer.record.num_envs
             batch_steps = int(conf.trainer.record.record_steps // num_envs)
             def make_env():
-                return gym.wrappers.TimeLimit(
-                    ZeroSim(conf), max_episode_steps=1000
-                )
+                return _maybe_time_limit(ZeroSim(conf), conf)
             model = load_model(conf.trainer.load_run, make_vec_env(make_env, n_envs=num_envs, vec_env_cls=DummyVecEnv), self.Alg)
             vec_env = model.get_env()
             obs = vec_env.reset()

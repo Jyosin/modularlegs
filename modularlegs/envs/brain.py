@@ -588,57 +588,73 @@ class Brain():
 
         return reward, info
     
-    def is_done(self):
+    def get_done_info(self):
+        info = {
+            "done_reason": None,
+            "done_metric": None,
+            "done_threshold": None,
+        }
+
         if self.done_version is None:
             done = False
         
         elif self.done_version == "ballance":
-            if np.dot(np.array([0, np.cos(self.theta), np.sin(self.theta)]), -self.projected_gravity) < 0.01:
-                done = True
-            else:
-                done = False
+            metric = np.dot(np.array([0, np.cos(self.theta), np.sin(self.theta)]), -self.projected_gravity)
+            threshold = 0.01
+            done = metric < threshold
+            info.update(done_reason="ballance", done_metric=float(metric), done_threshold=threshold)
 
         elif self.done_version == "ballance_upsidedown":
             up_vec = [0,0,-1]
             accurate_projected_gravity = quat_rotate_inverse(self.accurate_quat, self.gravity_vec)
-            if np.dot(np.array(up_vec), -accurate_projected_gravity) < 0.1:
-                done = True
-            else:
-                done = False
+            metric = np.dot(np.array(up_vec), -accurate_projected_gravity)
+            threshold = 0.1
+            done = metric < threshold
+            info.update(done_reason="ballance_upsidedown", done_metric=float(metric), done_threshold=threshold)
 
         elif self.done_version == "ballance_up":
-            up_vec = [0,0,1]
+            up_vec = self.projected_upward_vec if self.projected_upward_vec is not None else [0,0,1]
             accurate_projected_gravity = quat_rotate_inverse(self.accurate_quat, self.gravity_vec)
-            if np.dot(np.array(up_vec), -accurate_projected_gravity) < 0.1:
-                done = True
-            else:
-                done = False
+            metric = np.dot(np.array(up_vec), -accurate_projected_gravity)
+            threshold = 0.1
+            done = metric < threshold
+            info.update(done_reason="ballance_up", done_metric=float(metric), done_threshold=threshold)
 
         elif self.done_version == "ballance_auto":
             assert self.projected_upward_vec is not None, "projected_upward_vec is None"
             up_vec = self.projected_upward_vec
             accurate_projected_gravity = quat_rotate_inverse(self.accurate_quat, self.gravity_vec)
-            if np.dot(np.array(up_vec), -accurate_projected_gravity) < 0.1:
-                done = True
-            else:
-                done = False
+            metric = np.dot(np.array(up_vec), -accurate_projected_gravity)
+            threshold = 0.1
+            done = metric < threshold
+            info.update(done_reason="ballance_auto", done_metric=float(metric), done_threshold=threshold)
 
         elif self.done_version == "torso_fall":
             # This is specifically for the quadrupedX4air1s
 
-            if 1 in self.contact_floor_balls or 20 in self.contact_floor_balls:
-                done = True
-            else:
-                done = False
+            done = 1 in self.contact_floor_balls or 20 in self.contact_floor_balls
+            info.update(done_reason="torso_fall")
 
         elif self.done_version == "three_feet":
             threeleg = all(x in self.contact_floor_geoms for x in [5,6,7]) or all(x in self.contact_floor_geoms for x in [9,10,11])
             not_moving = np.linalg.norm(self.accurate_vel_world) < 0.1
             done = threeleg and not_moving
+            info.update(done_reason="three_feet", done_metric=float(np.linalg.norm(self.accurate_vel_world)), done_threshold=0.1)
 
         elif self.done_version == "ball_fall":
             done = bool(self.contact_floor_balls)
+            info.update(done_reason="ball_fall", done_metric=len(self.contact_floor_balls), done_threshold=0)
 
+        else:
+            raise NotImplementedError(f"Done version not found: {self.done_version}")
+
+        if not done:
+            info["done_reason"] = None
+
+        return done, info
+
+    def is_done(self):
+        done, _ = self.get_done_info()
         return done
     
     def is_upsidedown(self):

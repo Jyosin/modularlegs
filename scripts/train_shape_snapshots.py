@@ -23,6 +23,7 @@ BASE_EXPERIMENTS = [
     ("quadruped_angle", "config/shape_experiments/sim_train_shape_quadruped_angle.yaml"),
     ("quadruped_angle_large", "config/shape_experiments/sim_train_shape_quadruped_angle_large.yaml"),
     ("quadruped_angle_weird", "config/shape_experiments/sim_train_shape_quadruped_angle_weird.yaml"),
+    ("quadruped_one_leg_up", "config/shape_experiments/sim_train_shape_quadruped_one_leg_up.yaml"),
     ("extra_balls", "config/shape_experiments/sim_train_shape_extra_balls.yaml"),
 ]
 SHAPE_VARIANT_TEMPLATE = "config/shape_experiments/sim_train_shape_chain5.yaml"
@@ -37,9 +38,18 @@ DEFAULT_SNAPSHOT_INTERVAL = 100_000
 DEFAULT_VIDEO_STEPS = 120
 
 
+def episode_max_steps(conf):
+    return None if conf.agent.done_version is None else 1000
+
+
 def make_train_env(conf):
     base_env = ZeroSim(conf)
-    env = gym.wrappers.TimeLimit(base_env, max_episode_steps=1000)
+    max_episode_steps = episode_max_steps(conf)
+    env = (
+        base_env
+        if max_episode_steps is None
+        else gym.wrappers.TimeLimit(base_env, max_episode_steps=max_episode_steps)
+    )
     return base_env, env
 
 
