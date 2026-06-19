@@ -14,8 +14,8 @@ agent:
   projected_upward_vec: [0, -0.4460725292665206, 0.894996814873533]
   projected_forward_vec: [0.0, 0.894996814873533, 0.4460725292665206]
   forward_vec: [1, 0.0, 0]
-  predefined_commands: [0.6, 0, 2]
-  reward_params: [0.7, 0.3, 0, 0., -0.02, -0.01, -0.000002]
+  predefined_commands: [0.35, 0, 2, 0.25]
+  reward_params: [0.55, 0.15, -0.02, 0., -0.2, -0.01, -0.000002, 0, 0.45, 0.25, -1.0]
   filter_action: true
 
 interface: {}
@@ -37,20 +37,20 @@ sim:
   asset_file: quadrupedX4air1s_one_leg_up.xml
   init_pos: [0, 0, 0.45134612]
   init_quat: [0.94141482, -0.33129125, 0.05890461, -0.02268241]
-  randomize_orientation: true
+  randomize_orientation: false
   randomize_ini_vel: false
   noisy_init: false
   render: false
   latency_scheme: 0
-  random_latency_scheme: true
+  random_latency_scheme: false
   mass_offset: 0.1
-  randomize_mass: true
+  randomize_mass: false
   random_mass_percentage: 0.1
-  randomize_friction: true
+  randomize_friction: false
   random_friction_range: [[0.8, 1.2], [0.2, 0.4]]
-  noisy_actions: true
+  noisy_actions: false
   action_noise_std: 0.1
-  noisy_observations: true
+  noisy_observations: false
   obs_noise_std: 0.2
 
 trainer:

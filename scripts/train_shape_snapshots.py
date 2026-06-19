@@ -2,6 +2,7 @@ import argparse
 import contextlib
 import glob
 import os
+import shutil
 
 import gymnasium as gym
 import sbx
@@ -147,6 +148,7 @@ def main():
     parser.add_argument("--snapshot-interval", type=int, default=DEFAULT_SNAPSHOT_INTERVAL)
     parser.add_argument("--video-steps", type=int, default=DEFAULT_VIDEO_STEPS)
     parser.add_argument("--no-video", action="store_true")
+    parser.add_argument("--fresh", action="store_true", help="Remove existing checkpoints for selected experiments before training")
     args = parser.parse_args()
     if args.snapshot_interval <= 0:
         raise ValueError("--snapshot-interval must be positive")
@@ -163,6 +165,11 @@ def main():
         asset_file = asset_file[0] if asset_file else None
         conf = load_experiment_cfg(cfg_name, name, asset_file)
         out_dir = conf.logging.data_dir
+        if args.fresh and os.path.isdir(out_dir):
+            for pattern in ["rl_model_*.zip", "rl_model_last.zip", "progress.csv"]:
+                for path in glob.glob(os.path.join(out_dir, pattern)):
+                    os.remove(path)
+            shutil.rmtree(os.path.join(out_dir, "visualization"), ignore_errors=True)
         os.makedirs(out_dir, exist_ok=True)
         start_steps = get_existing_max_step(out_dir)
         if start_steps >= args.target_steps:
