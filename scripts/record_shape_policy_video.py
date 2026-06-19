@@ -65,6 +65,62 @@ def prepare_record_conf(conf, output_dir, width, height):
     return conf
 
 
+def _get_body_pos(env, body_name=None):
+    env = env.unwrapped
+    if body_name is not None:
+        try:
+            return env.data.body(body_name).xpos.copy()
+        except Exception:
+            pass
+
+    for candidate in ["torso0", "l0", "r0"]:
+        try:
+            return env.data.body(candidate).xpos.copy()
+        except Exception:
+            pass
+
+    try:
+        return env.data.qpos[:3].copy()
+    except Exception:
+        return None
+
+
+def update_follow_camera(
+    env,
+    body_name=None,
+    distance=3.0,
+    elevation=-20.0,
+    azimuth=90.0,
+    z_offset=0.3,
+):
+    env = env.unwrapped
+    pos = _get_body_pos(env, body_name=body_name)
+    if pos is None:
+        return False
+
+    lookat = pos.copy()
+    lookat[2] += z_offset
+
+    cam = None
+    if hasattr(env, "viewer") and hasattr(env.viewer, "cam"):
+        cam = env.viewer.cam
+    elif hasattr(env, "mujoco_renderer"):
+        renderer = env.mujoco_renderer
+        if hasattr(renderer, "viewer") and hasattr(renderer.viewer, "cam"):
+            cam = renderer.viewer.cam
+    elif hasattr(env, "renderer") and hasattr(env.renderer, "cam"):
+        cam = env.renderer.cam
+
+    if cam is None:
+        return False
+
+    cam.lookat[:] = lookat
+    cam.distance = distance
+    cam.elevation = elevation
+    cam.azimuth = azimuth
+    return True
+
+
 def record_policy_video(args):
     conf = load_cfg(args.config, alg="sbx")
     name = args.name or _experiment_name(conf)
@@ -83,7 +139,8 @@ def record_policy_video(args):
     video_steps = int(round(args.seconds * fps))
     video_path = args.video_path or os.path.join(
         output_dir,
-        f"{name}_{args.model_step}_{int(args.seconds)}s.mp4",
+        f"{name}_{args.model_step}_{int(args.seconds)}s"
+        f"{'_follow' if args.camera_mode == 'follow' else ''}.mp4",
     )
 
     env = ZeroSim(conf)
@@ -95,6 +152,15 @@ def record_policy_video(args):
         for _ in range(video_steps):
             action, _ = model.predict(obs, deterministic=True)
             obs, _, done, truncated, _ = env.step(action)
+            if args.camera_mode == "follow":
+                update_follow_camera(
+                    env,
+                    body_name=args.camera_follow_body,
+                    distance=args.camera_distance,
+                    elevation=args.camera_elevation,
+                    azimuth=args.camera_azimuth,
+                    z_offset=args.camera_z_offset,
+                )
             writer.append_data(env.render())
             if args.stop_on_done and (done or truncated):
                 break
@@ -118,6 +184,12 @@ def main():
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--video-path", default=None)
     parser.add_argument("--stop-on-done", action="store_true")
+    parser.add_argument("--camera-mode", choices=["fixed", "follow"], default="fixed")
+    parser.add_argument("--camera-follow-body", default=None)
+    parser.add_argument("--camera-distance", type=float, default=3.0)
+    parser.add_argument("--camera-elevation", type=float, default=-20.0)
+    parser.add_argument("--camera-azimuth", type=float, default=90.0)
+    parser.add_argument("--camera-z-offset", type=float, default=0.3)
     args = parser.parse_args()
 
     if args.seconds <= 0:
