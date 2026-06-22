@@ -25,6 +25,7 @@ BASE_EXPERIMENTS = [
     ("quadruped_angle_large", "config/shape_experiments/sim_train_shape_quadruped_angle_large.yaml"),
     ("quadruped_angle_weird", "config/shape_experiments/sim_train_shape_quadruped_angle_weird.yaml"),
     ("quadruped_one_leg_up", "config/shape_experiments/sim_train_shape_quadruped_one_leg_up.yaml"),
+    ("quadruped_rear_leg_up", "config/shape_experiments/sim_train_shape_quadruped_rear_leg_up.yaml"),
     ("extra_balls", "config/shape_experiments/sim_train_shape_extra_balls.yaml"),
 ]
 SHAPE_VARIANT_TEMPLATE = "config/shape_experiments/sim_train_shape_chain5.yaml"
