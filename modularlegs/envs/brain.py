@@ -319,7 +319,8 @@ class Brain():
                                    0, # desired z angular velocity
                                    1,  # allowed number of feet contacting the floor
                                    0.15, # tracking sigma
-                                   -1 # desired height
+                                   -1, # desired height
+                                   0, # minimum forward velocity before applying stall penalty
                                    ]
             if self.predefined_commands is not None:
                 predefined_commands[:len(self.predefined_commands)] = self.predefined_commands
@@ -328,6 +329,7 @@ class Brain():
             allowed_num_contacts = predefined_commands[2]
             tracking_sigma = predefined_commands[3]
             desired_height = predefined_commands[4] if predefined_commands[4] != -1 else self.sim_init_pos[2]
+            min_forward_vel = predefined_commands[5]
 
             # Curriculum learning for the forward velocity
             # if self.step_counter < 2e5:
@@ -343,6 +345,7 @@ class Brain():
             lin_vel_error = np.sum(np.square(command - projected_forward_vel))
             
             lin_vel_reward = np.exp(-lin_vel_error/tracking_sigma)
+            stall_penalty = max(0, min_forward_vel - projected_forward_vel)
 
             # Tracking the z angular velocity
             accurate_projected_gravity = quat_rotate_inverse(self.accurate_quat, self.gravity_vec)
@@ -401,7 +404,8 @@ class Brain():
                   0,      # Jump reward
                   0,     # Upright reward
                   0,      # Height tracking reward
-                  0
+                  0,      # Torso touch floor
+                  0,      # Stall penalty
                   ]
             if self.reward_params is not None:
                 rp[:len(self.reward_params)] = self.reward_params
@@ -416,7 +420,7 @@ class Brain():
                         rp[i] = float(p.split("-")[1])
                         # print(f"[{self.step_counter}] Curriculum learning: ", rp)
 
-            reward_terms = np.array(rp)*np.array([lin_vel_reward, ang_vel_reward, action_rate, fly_reward, num_balls_fall, dof_penalty, dof_acc_penalty, jump_reward, upward_reward, height_track_reward, torso_touch_floor])
+            reward_terms = np.array(rp)*np.array([lin_vel_reward, ang_vel_reward, action_rate, fly_reward, num_balls_fall, dof_penalty, dof_acc_penalty, jump_reward, upward_reward, height_track_reward, torso_touch_floor, stall_penalty])
             with np.printoptions(precision=2, suppress=True, threshold=10):
                 if wandb.run is None or isinstance(wandb.run, wandb.sdk.lib.disabled.RunDisabled) :
                     print("Reawrd: ", reward_terms)
