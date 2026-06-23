@@ -1,16 +1,21 @@
 import argparse
 import contextlib
 import glob
+import json
 import os
 import shutil
+from collections import defaultdict
 
 import gymnasium as gym
+import imageio.v2 as imageio
+import imageio.v3 as iio
+import numpy as np
 import sbx
 from stable_baselines3.common.logger import configure
 
 from modularlegs.envs.env_sim import ZeroSim
 from modularlegs.utils.files import load_cfg
-from modularlegs.utils.train import load_model
+from modularlegs.utils.train import load_model, save_rollout
 
 try:
     from generate_shape_variants import SHAPE_VARIANTS
@@ -38,6 +43,9 @@ EXPERIMENTS = BASE_EXPERIMENTS + SHAPE_EXPERIMENTS
 DEFAULT_TARGET_STEPS = 1_000_000
 DEFAULT_SNAPSHOT_INTERVAL = 100_000
 DEFAULT_VIDEO_STEPS = 120
+GITHUB_ORIGINAL_OUTPUT_ROOT = "exp/shape_experiments_github_original"
+GITHUB_ORIGINAL_COMMANDS = [0.6, 0, 2]
+GITHUB_ORIGINAL_REWARD_PARAMS = [0.7, 0.3, 0, 0.0, -0.02, -0.01, -0.000002]
 
 
 def episode_max_steps(conf):
@@ -55,11 +63,30 @@ def make_train_env(conf):
     return base_env, env
 
 
-def load_experiment_cfg(cfg_name, name, asset_file=None):
+def apply_github_original_shape_method(conf):
+    if conf.agent.reward_version != "cheat_isaac_general":
+        return conf
+    conf.agent.done_version = "ballance_up"
+    conf.agent.predefined_commands = list(GITHUB_ORIGINAL_COMMANDS)
+    conf.agent.reward_params = list(GITHUB_ORIGINAL_REWARD_PARAMS)
+    return conf
+
+
+def load_experiment_cfg(
+    cfg_name,
+    name,
+    asset_file=None,
+    output_root=None,
+    github_original_method=False,
+):
     conf = load_cfg(cfg_name, alg="sbx")
     if asset_file is not None:
         conf.sim.asset_file = asset_file
         conf.logging.data_dir = os.path.join("exp", "shape_experiments", name)
+    if output_root is not None:
+        conf.logging.data_dir = os.path.join(output_root, name)
+    if github_original_method:
+        conf = apply_github_original_shape_method(conf)
     return conf
 
 
@@ -98,38 +125,78 @@ def prepare_visual_conf(conf, vis_dir, name):
     return conf
 
 
-def record_snapshot(name, cfg_name, asset_file, model_path, total_steps, video_steps):
-    import imageio.v3 as iio
-
-    from modularlegs.envs.gym.rendering import RecordVideo
-
-    conf = load_experiment_cfg(cfg_name, name, asset_file)
+def record_snapshot(
+    name,
+    cfg_name,
+    asset_file,
+    model_path,
+    total_steps,
+    video_steps,
+    output_root=None,
+    github_original_method=False,
+):
+    conf = load_experiment_cfg(
+        cfg_name,
+        name,
+        asset_file,
+        output_root=output_root,
+        github_original_method=github_original_method,
+    )
     vis_dir = os.path.join(conf.logging.data_dir, "visualization")
-    os.makedirs(vis_dir, exist_ok=True)
+    save_dir = os.path.join(vis_dir, f"rl_model_{total_steps}")
+    os.makedirs(save_dir, exist_ok=True)
     conf = prepare_visual_conf(conf, vis_dir, name)
 
     base_env = ZeroSim(conf)
     env = gym.wrappers.TimeLimit(base_env, max_episode_steps=video_steps)
-    env = RecordVideo(
-        env,
-        video_folder=vis_dir,
-        step_trigger=lambda step: step == 0,
-        video_length=video_steps,
-        name_prefix=f"step_{total_steps}",
-        fps=int(1 / conf.robot.dt),
-        disable_logger=True,
-    )
     model = load_model(model_path, env, sbx.CrossQ, device="cpu")
 
     obs, _ = env.reset()
-    iio.imwrite(os.path.join(vis_dir, f"step_{total_steps}_preview.png"), base_env.render())
+    preview_path = os.path.join(save_dir, "preview.png")
+    video_path = os.path.join(save_dir, "episode_000.mp4")
+    video_ref_path = os.path.join(save_dir, "rollout_video_refs.json")
+    iio.imwrite(preview_path, base_env.render())
+    writer = imageio.get_writer(
+        video_path,
+        fps=int(1 / conf.robot.dt),
+        macro_block_size=1,
+    )
+    rollout = defaultdict(list)
+
     with open(os.devnull, "w") as devnull, contextlib.redirect_stdout(devnull):
-        for _ in range(video_steps):
-            action, _ = model.predict(obs, deterministic=True)
-            obs, _, terminated, truncated, _ = env.step(action)
-            if terminated or truncated:
-                break
-    env.close()
+        try:
+            for frame_idx in range(video_steps):
+                action, _ = model.predict(obs, deterministic=True)
+                rollout["observations"].append(np.expand_dims(np.asarray(obs), axis=0))
+                rollout["actions"].append(np.expand_dims(np.asarray(action), axis=0))
+
+                obs, reward, terminated, truncated, _ = env.step(action)
+                done = bool(terminated or truncated)
+                rollout["rewards"].append(np.asarray([reward]))
+                rollout["dones"].append(np.asarray([done]))
+                writer.append_data(base_env.render())
+                if done:
+                    break
+        finally:
+            writer.close()
+            env.close()
+
+    save_rollout(rollout, save_dir)
+    with open(video_ref_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "source_model": model_path,
+                "video_path": os.path.relpath(video_path, save_dir),
+                "video_env_index": 0,
+                "fps": int(1 / conf.robot.dt),
+                "video_every_n_steps": 1,
+                "frame_index_semantics": "one frame is written for each rollout step in this single-env snapshot",
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
+    print(f"recorded {name} snapshot at {total_steps}: {save_dir}")
 
 
 def get_existing_max_step(out_dir):
@@ -150,6 +217,8 @@ def main():
     parser.add_argument("--video-steps", type=int, default=DEFAULT_VIDEO_STEPS)
     parser.add_argument("--no-video", action="store_true")
     parser.add_argument("--fresh", action="store_true", help="Remove existing checkpoints for selected experiments before training")
+    parser.add_argument("--output-root", default=None, help="Override experiment output root, e.g. exp/shape_experiments_github_original")
+    parser.add_argument("--github-original-method", action="store_true", help="Use the original shape-training reward settings for cheat_isaac_general configs")
     args = parser.parse_args()
     if args.snapshot_interval <= 0:
         raise ValueError("--snapshot-interval must be positive")
@@ -164,7 +233,16 @@ def main():
     for item in experiments:
         name, cfg_name, *asset_file = item
         asset_file = asset_file[0] if asset_file else None
-        conf = load_experiment_cfg(cfg_name, name, asset_file)
+        output_root = args.output_root
+        if args.github_original_method and output_root is None:
+            output_root = GITHUB_ORIGINAL_OUTPUT_ROOT
+        conf = load_experiment_cfg(
+            cfg_name,
+            name,
+            asset_file,
+            output_root=output_root,
+            github_original_method=args.github_original_method,
+        )
         out_dir = conf.logging.data_dir
         if args.fresh and os.path.isdir(out_dir):
             for pattern in ["rl_model_*.zip", "rl_model_last.zip", "progress.csv"]:
@@ -199,6 +277,8 @@ def main():
                     snapshot_model,
                     total_steps,
                     args.video_steps,
+                    output_root=output_root,
+                    github_original_method=args.github_original_method,
                 )
             print(f"saved {name} snapshot at {total_steps} steps")
 
