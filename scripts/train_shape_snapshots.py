@@ -8,13 +8,17 @@ from collections import defaultdict
 
 import gymnasium as gym
 import imageio.v2 as imageio
-import imageio.v3 as iio
 import numpy as np
 import sbx
+import yaml
+from omegaconf import OmegaConf
+from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.logger import configure
 
+from modularlegs import LEG_ROOT_DIR
 from modularlegs.envs.env_sim import ZeroSim
 from modularlegs.utils.files import load_cfg
+from modularlegs.utils.logger import plot_learning_curve
 from modularlegs.utils.train import load_model, save_rollout
 
 try:
@@ -42,7 +46,7 @@ EXPERIMENTS = BASE_EXPERIMENTS + SHAPE_EXPERIMENTS
 
 DEFAULT_TARGET_STEPS = 1_000_000
 DEFAULT_SNAPSHOT_INTERVAL = 100_000
-DEFAULT_VIDEO_STEPS = 120
+DEFAULT_RECORD_STEPS = 120
 GITHUB_ORIGINAL_OUTPUT_ROOT = "exp/shape_experiments_github_original"
 GITHUB_ORIGINAL_COMMANDS = [0.6, 0, 2]
 GITHUB_ORIGINAL_REWARD_PARAMS = [0.7, 0.3, 0, 0.0, -0.02, -0.01, -0.000002]
@@ -90,8 +94,45 @@ def load_experiment_cfg(
     return conf
 
 
-def prepare_visual_conf(conf, vis_dir, name):
-    from modularlegs import LEG_ROOT_DIR
+def to_serializable(x):
+    if isinstance(x, np.ndarray):
+        return x.tolist()
+    if isinstance(x, (np.floating, np.integer, np.bool_)):
+        return x.item()
+    if isinstance(x, dict):
+        return {k: to_serializable(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [to_serializable(v) for v in x]
+    return x
+
+
+def save_run_conf(conf, cfg_name, out_dir):
+    os.makedirs(out_dir, exist_ok=True)
+    if os.path.exists(cfg_name):
+        shutil.copy(cfg_name, out_dir)
+    with open(os.path.join(out_dir, "running_config.yaml"), "w") as file:
+        yaml.dump(OmegaConf.to_container(conf, resolve=True), file, default_flow_style=False)
+    with open(os.path.join(out_dir, "note.txt"), "w") as f:
+        f.write(str(getattr(conf.trainer, "notes", "")))
+
+    asset_files = (
+        conf.sim.asset_file
+        if isinstance(conf.sim.asset_file, (list, tuple))
+        else [conf.sim.asset_file]
+    )
+    asset_log_dir = os.path.join(out_dir, "assets")
+    os.makedirs(asset_log_dir, exist_ok=True)
+    for asset_file in asset_files:
+        xml_file = (
+            asset_file
+            if os.path.isabs(asset_file)
+            else os.path.join(LEG_ROOT_DIR, "modularlegs", "sim", "assets", "robots", asset_file)
+        )
+        if os.path.exists(xml_file):
+            shutil.copy(xml_file, asset_log_dir)
+
+
+def prepare_record_conf(conf):
     from modularlegs.utils.model import XMLCompiler
 
     conf.trainer.mode = "play"
@@ -117,7 +158,12 @@ def prepare_visual_conf(conf, vis_dir, name):
             LEG_ROOT_DIR, "modularlegs", "sim", "assets", "robots", source_asset
         )
     )
-    render_xml = os.path.abspath(os.path.join(vis_dir, f"{name}_no_shadow.xml"))
+    render_xml = os.path.abspath(
+        os.path.join(
+            conf.logging.data_dir,
+            f"{os.path.basename(os.path.normpath(conf.logging.data_dir))}_no_shadow.xml",
+        )
+    )
     compiler = XMLCompiler(source_xml)
     compiler.remove_shadow()
     compiler.save(render_xml)
@@ -130,8 +176,7 @@ def record_snapshot(
     cfg_name,
     asset_file,
     model_path,
-    total_steps,
-    video_steps,
+    record_steps,
     output_root=None,
     github_original_method=False,
 ):
@@ -142,42 +187,64 @@ def record_snapshot(
         output_root=output_root,
         github_original_method=github_original_method,
     )
-    vis_dir = os.path.join(conf.logging.data_dir, "visualization")
-    save_dir = os.path.join(vis_dir, f"rl_model_{total_steps}")
+    model_path = os.path.abspath(model_path)
+    model_stem = os.path.splitext(os.path.basename(model_path))[0]
+    save_dir = os.path.join(os.path.dirname(model_path), model_stem)
     os.makedirs(save_dir, exist_ok=True)
-    conf = prepare_visual_conf(conf, vis_dir, name)
+    with open(os.path.join(save_dir, "_source_model.txt"), "w") as f:
+        f.write(model_path + "\n")
+    conf = prepare_record_conf(conf)
 
     base_env = ZeroSim(conf)
-    env = gym.wrappers.TimeLimit(base_env, max_episode_steps=video_steps)
+    env = gym.wrappers.TimeLimit(base_env, max_episode_steps=record_steps)
     model = load_model(model_path, env, sbx.CrossQ, device="cpu")
 
     obs, _ = env.reset()
-    preview_path = os.path.join(save_dir, "preview.png")
+    constructed_obs = obs
     video_path = os.path.join(save_dir, "episode_000.mp4")
+    obslog_path = os.path.join(save_dir, "episode_000.obs.jsonl")
     video_ref_path = os.path.join(save_dir, "rollout_video_refs.json")
-    iio.imwrite(preview_path, base_env.render())
     writer = imageio.get_writer(
         video_path,
         fps=int(1 / conf.robot.dt),
         macro_block_size=1,
     )
     rollout = defaultdict(list)
+    obslog_fp = open(obslog_path, "w", encoding="utf-8")
 
     with open(os.devnull, "w") as devnull, contextlib.redirect_stdout(devnull):
         try:
-            for frame_idx in range(video_steps):
+            for step_idx in range(record_steps):
                 action, _ = model.predict(obs, deterministic=True)
-                rollout["observations"].append(np.expand_dims(np.asarray(obs), axis=0))
+                rollout["observations"].append(np.expand_dims(np.asarray(constructed_obs), axis=0))
                 rollout["actions"].append(np.expand_dims(np.asarray(action), axis=0))
 
                 obs, reward, terminated, truncated, _ = env.step(action)
                 done = bool(terminated or truncated)
+                constructed_obs = obs
                 rollout["rewards"].append(np.asarray([reward]))
                 rollout["dones"].append(np.asarray([done]))
+                rollout["frame_idx"].append(np.asarray([step_idx], dtype=np.int32))
                 writer.append_data(base_env.render())
+                obslog_fp.write(
+                    json.dumps(
+                        {
+                            "step_idx": step_idx,
+                            "frame_idx": step_idx,
+                            "video_env_index": 0,
+                            "obs": to_serializable(constructed_obs),
+                            "action": to_serializable(action),
+                            "reward": to_serializable(reward),
+                            "done": to_serializable(done),
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
                 if done:
                     break
         finally:
+            obslog_fp.close()
             writer.close()
             env.close()
 
@@ -190,13 +257,13 @@ def record_snapshot(
                 "video_env_index": 0,
                 "fps": int(1 / conf.robot.dt),
                 "video_every_n_steps": 1,
-                "frame_index_semantics": "one frame is written for each rollout step in this single-env snapshot",
+                "frame_index_semantics": "rollout['frame_idx'][t][i] == frame index in video, or -1 if no frame was written for env i",
             },
             f,
             ensure_ascii=False,
             indent=2,
         )
-    print(f"recorded {name} snapshot at {total_steps}: {save_dir}")
+    print(f"recorded {name} model {os.path.basename(model_path)}: {save_dir}")
 
 
 def get_existing_max_step(out_dir):
@@ -204,17 +271,29 @@ def get_existing_max_step(out_dir):
     for path in glob.glob(os.path.join(out_dir, "rl_model_*.zip")):
         stem = os.path.basename(path).removesuffix(".zip")
         suffix = stem.removeprefix("rl_model_")
+        suffix = suffix.removesuffix("_steps")
         if suffix.isdigit():
             steps.append(int(suffix))
     return max(steps) if steps else 0
+
+
+def checkpoint_paths(out_dir):
+    paths = []
+    for path in glob.glob(os.path.join(out_dir, "rl_model_*_steps.zip")):
+        stem = os.path.basename(path).removesuffix(".zip")
+        suffix = stem.removeprefix("rl_model_").removesuffix("_steps")
+        if suffix.isdigit():
+            paths.append((int(suffix), path))
+    return [path for _, path in sorted(paths)]
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--only", nargs="*", default=None)
     parser.add_argument("--target-steps", type=int, default=DEFAULT_TARGET_STEPS)
-    parser.add_argument("--snapshot-interval", type=int, default=DEFAULT_SNAPSHOT_INTERVAL)
-    parser.add_argument("--video-steps", type=int, default=DEFAULT_VIDEO_STEPS)
+    parser.add_argument("--snapshot-interval", type=int, default=DEFAULT_SNAPSHOT_INTERVAL, help="Checkpoint save frequency; matches train.py default at 100000")
+    parser.add_argument("--record-steps", type=int, default=DEFAULT_RECORD_STEPS)
+    parser.add_argument("--video-steps", type=int, default=None, help="Deprecated alias for --record-steps")
     parser.add_argument("--no-video", action="store_true")
     parser.add_argument("--fresh", action="store_true", help="Remove existing checkpoints for selected experiments before training")
     parser.add_argument("--output-root", default=None, help="Override experiment output root, e.g. exp/shape_experiments_github_original")
@@ -222,8 +301,10 @@ def main():
     args = parser.parse_args()
     if args.snapshot_interval <= 0:
         raise ValueError("--snapshot-interval must be positive")
-    if args.video_steps <= 0:
-        raise ValueError("--video-steps must be positive")
+    if args.video_steps is not None:
+        args.record_steps = args.video_steps
+    if args.record_steps <= 0:
+        raise ValueError("--record-steps must be positive")
 
     experiments = EXPERIMENTS
     if args.only:
@@ -245,9 +326,12 @@ def main():
         )
         out_dir = conf.logging.data_dir
         if args.fresh and os.path.isdir(out_dir):
-            for pattern in ["rl_model_*.zip", "rl_model_last.zip", "progress.csv"]:
+            for pattern in ["rl_model_*.zip", "rl_model_last.zip", "progress.csv", "events.out.tfevents.*", "curve.png"]:
                 for path in glob.glob(os.path.join(out_dir, pattern)):
                     os.remove(path)
+            for path in glob.glob(os.path.join(out_dir, "rl_model_*_steps")):
+                shutil.rmtree(path, ignore_errors=True)
+            shutil.rmtree(os.path.join(out_dir, "rl_model_last"), ignore_errors=True)
             shutil.rmtree(os.path.join(out_dir, "visualization"), ignore_errors=True)
         os.makedirs(out_dir, exist_ok=True)
         start_steps = get_existing_max_step(out_dir)
@@ -259,28 +343,45 @@ def main():
         model_path = os.path.join(out_dir, "rl_model_last.zip")
         model = load_model(model_path if os.path.exists(model_path) else None, env, sbx.CrossQ)
         model.set_logger(configure(out_dir, ["stdout", "csv", "tensorboard"]))
+        save_run_conf(conf, cfg_name, out_dir)
 
-        total_steps = start_steps
-        while total_steps < args.target_steps:
-            chunk_steps = min(args.snapshot_interval, args.target_steps - total_steps)
-            with open(os.devnull, "w") as devnull, contextlib.redirect_stdout(devnull):
-                model.learn(total_timesteps=chunk_steps, reset_num_timesteps=False)
-            total_steps += chunk_steps
-            snapshot_model = os.path.join(out_dir, f"rl_model_{total_steps}.zip")
-            model.save(snapshot_model)
-            model.save(model_path)
-            if not args.no_video:
+        checkpoint_callback = CheckpointCallback(
+            save_freq=args.snapshot_interval,
+            save_path=out_dir,
+            name_prefix="rl_model",
+            save_replay_buffer=False,
+            save_vecnormalize=True,
+        )
+        with open(os.devnull, "w") as devnull, contextlib.redirect_stdout(devnull):
+            model.learn(
+                total_timesteps=args.target_steps - start_steps,
+                callback=[checkpoint_callback],
+                reset_num_timesteps=start_steps == 0,
+            )
+        model.save(model_path)
+        try:
+            plot_learning_curve(
+                os.path.join(out_dir, "progress.csv"),
+                os.path.join(out_dir, "curve.png"),
+            )
+        except Exception as exc:
+            print(f"warning: failed to plot learning curve for {name}: {exc}")
+
+        if not args.no_video:
+            models_to_record = checkpoint_paths(out_dir)
+            if os.path.exists(model_path):
+                models_to_record.append(model_path)
+            for snapshot_model in models_to_record:
                 record_snapshot(
                     name,
                     cfg_name,
                     asset_file,
                     snapshot_model,
-                    total_steps,
-                    args.video_steps,
+                    args.record_steps,
                     output_root=output_root,
                     github_original_method=args.github_original_method,
                 )
-            print(f"saved {name} snapshot at {total_steps} steps")
+        print(f"saved {name} through {args.target_steps} steps")
 
         env.close()
 
