@@ -47,6 +47,7 @@ EXPERIMENTS = BASE_EXPERIMENTS + SHAPE_EXPERIMENTS
 DEFAULT_TARGET_STEPS = 1_000_000
 DEFAULT_SNAPSHOT_INTERVAL = 100_000
 DEFAULT_RECORD_STEPS = 120
+DEFAULT_SHADOW_SIZE = 4096
 GITHUB_ORIGINAL_OUTPUT_ROOT = "exp/shape_experiments_github_original"
 GITHUB_ORIGINAL_COMMANDS = [0.6, 0, 2]
 GITHUB_ORIGINAL_REWARD_PARAMS = [0.7, 0.3, 0, 0.0, -0.02, -0.01, -0.000002]
@@ -132,7 +133,7 @@ def save_run_conf(conf, cfg_name, out_dir):
             shutil.copy(xml_file, asset_log_dir)
 
 
-def prepare_record_conf(conf):
+def prepare_record_conf(conf, shadow_size=DEFAULT_SHADOW_SIZE):
     from modularlegs.utils.model import XMLCompiler
 
     conf.trainer.mode = "play"
@@ -161,14 +162,78 @@ def prepare_record_conf(conf):
     render_xml = os.path.abspath(
         os.path.join(
             conf.logging.data_dir,
-            f"{os.path.basename(os.path.normpath(conf.logging.data_dir))}_no_shadow.xml",
+            f"{os.path.basename(os.path.normpath(conf.logging.data_dir))}_shadow.xml",
         )
     )
     compiler = XMLCompiler(source_xml)
-    compiler.remove_shadow()
+    quality = compiler.root.find(".//visual/quality")
+    if quality is not None:
+        quality.set("shadowsize", str(shadow_size))
     compiler.save(render_xml)
     conf.sim.asset_file = render_xml
     return conf
+
+
+def get_camera(env):
+    env = env.unwrapped
+    if hasattr(env, "viewer") and hasattr(env.viewer, "cam"):
+        return env.viewer.cam
+    if hasattr(env, "mujoco_renderer"):
+        renderer = env.mujoco_renderer
+        if hasattr(renderer, "viewer") and hasattr(renderer.viewer, "cam"):
+            return renderer.viewer.cam
+    if hasattr(env, "renderer") and hasattr(env.renderer, "cam"):
+        return env.renderer.cam
+    return None
+
+
+def get_body_pos(env, body_name=None):
+    env = env.unwrapped
+    if body_name is not None:
+        try:
+            return env.data.body(body_name).xpos.copy()
+        except Exception:
+            pass
+    for candidate in ["torso0", "l0", "r0"]:
+        try:
+            return env.data.body(candidate).xpos.copy()
+        except Exception:
+            pass
+    try:
+        return env.data.qpos[:3].copy()
+    except Exception:
+        return None
+
+
+def apply_original_camera(env):
+    env = env.unwrapped
+    cam = get_camera(env)
+    if cam is None:
+        return False
+    cam.lookat[:] = env.render_lookat_filter(env.pos_world)
+    cam.distance = 2
+    return True
+
+
+def apply_follow_camera(
+    env,
+    body_name=None,
+    distance=3.0,
+    elevation=-20.0,
+    azimuth=90.0,
+    z_offset=0.3,
+):
+    cam = get_camera(env)
+    pos = get_body_pos(env, body_name=body_name)
+    if cam is None or pos is None:
+        return False
+    lookat = pos.copy()
+    lookat[2] += z_offset
+    cam.lookat[:] = lookat
+    cam.distance = distance
+    cam.elevation = elevation
+    cam.azimuth = azimuth
+    return True
 
 
 def record_snapshot(
@@ -177,6 +242,8 @@ def record_snapshot(
     asset_file,
     model_path,
     record_steps,
+    record_views,
+    shadow_size=DEFAULT_SHADOW_SIZE,
     output_root=None,
     github_original_method=False,
 ):
@@ -193,7 +260,7 @@ def record_snapshot(
     os.makedirs(save_dir, exist_ok=True)
     with open(os.path.join(save_dir, "_source_model.txt"), "w") as f:
         f.write(model_path + "\n")
-    conf = prepare_record_conf(conf)
+    conf = prepare_record_conf(conf, shadow_size=shadow_size)
 
     base_env = ZeroSim(conf)
     env = gym.wrappers.TimeLimit(base_env, max_episode_steps=record_steps)
@@ -201,14 +268,21 @@ def record_snapshot(
 
     obs, _ = env.reset()
     constructed_obs = obs
-    video_path = os.path.join(save_dir, "episode_000.mp4")
+    video_paths = {}
+    if "original" in record_views:
+        video_paths["original"] = os.path.join(save_dir, "episode_000.mp4")
+    if "follow" in record_views:
+        video_paths["follow"] = os.path.join(save_dir, "episode_000_follow.mp4")
     obslog_path = os.path.join(save_dir, "episode_000.obs.jsonl")
     video_ref_path = os.path.join(save_dir, "rollout_video_refs.json")
-    writer = imageio.get_writer(
-        video_path,
-        fps=int(1 / conf.robot.dt),
-        macro_block_size=1,
-    )
+    writers = {
+        view: imageio.get_writer(
+            path,
+            fps=int(1 / conf.robot.dt),
+            macro_block_size=1,
+        )
+        for view, path in video_paths.items()
+    }
     rollout = defaultdict(list)
     obslog_fp = open(obslog_path, "w", encoding="utf-8")
 
@@ -225,7 +299,12 @@ def record_snapshot(
                 rollout["rewards"].append(np.asarray([reward]))
                 rollout["dones"].append(np.asarray([done]))
                 rollout["frame_idx"].append(np.asarray([step_idx], dtype=np.int32))
-                writer.append_data(base_env.render())
+                if "original" in writers:
+                    apply_original_camera(base_env)
+                    writers["original"].append_data(base_env.render())
+                if "follow" in writers:
+                    apply_follow_camera(base_env)
+                    writers["follow"].append_data(base_env.render())
                 obslog_fp.write(
                     json.dumps(
                         {
@@ -245,7 +324,8 @@ def record_snapshot(
                     break
         finally:
             obslog_fp.close()
-            writer.close()
+            for writer in writers.values():
+                writer.close()
             env.close()
 
     save_rollout(rollout, save_dir)
@@ -253,10 +333,22 @@ def record_snapshot(
         json.dump(
             {
                 "source_model": model_path,
-                "video_path": os.path.relpath(video_path, save_dir),
+                "video_path": (
+                    os.path.relpath(video_paths["original"], save_dir)
+                    if "original" in video_paths
+                    else None
+                ),
+                "video_paths": {
+                    view: os.path.relpath(path, save_dir)
+                    for view, path in video_paths.items()
+                },
                 "video_env_index": 0,
                 "fps": int(1 / conf.robot.dt),
                 "video_every_n_steps": 1,
+                "camera_views": {
+                    "original": "GitHub train.py RecordVideo style: render_lookat_filter(pos_world), distance=2, original XML shadows",
+                    "follow": "train_sbx_record_with_video.py style: follow camera, distance=3.0, elevation=-20, azimuth=90, z_offset=0.3, original XML shadows",
+                },
                 "frame_index_semantics": "rollout['frame_idx'][t][i] == frame index in video, or -1 if no frame was written for env i",
             },
             f,
@@ -293,6 +385,8 @@ def main():
     parser.add_argument("--target-steps", type=int, default=DEFAULT_TARGET_STEPS)
     parser.add_argument("--snapshot-interval", type=int, default=DEFAULT_SNAPSHOT_INTERVAL, help="Checkpoint save frequency; matches train.py default at 100000")
     parser.add_argument("--record-steps", type=int, default=DEFAULT_RECORD_STEPS)
+    parser.add_argument("--record-views", nargs="+", choices=["original", "follow"], default=["original", "follow"])
+    parser.add_argument("--shadow-size", type=int, default=DEFAULT_SHADOW_SIZE)
     parser.add_argument("--video-steps", type=int, default=None, help="Deprecated alias for --record-steps")
     parser.add_argument("--no-video", action="store_true")
     parser.add_argument("--fresh", action="store_true", help="Remove existing checkpoints for selected experiments before training")
@@ -305,6 +399,8 @@ def main():
         args.record_steps = args.video_steps
     if args.record_steps <= 0:
         raise ValueError("--record-steps must be positive")
+    if args.shadow_size <= 0:
+        raise ValueError("--shadow-size must be positive")
 
     experiments = EXPERIMENTS
     if args.only:
@@ -326,7 +422,7 @@ def main():
         )
         out_dir = conf.logging.data_dir
         if args.fresh and os.path.isdir(out_dir):
-            for pattern in ["rl_model_*.zip", "rl_model_last.zip", "progress.csv", "events.out.tfevents.*", "curve.png"]:
+            for pattern in ["rl_model_*.zip", "rl_model_last.zip", "progress.csv", "events.out.tfevents.*", "curve.png", "*_no_shadow.xml", "*_shadow.xml"]:
                 for path in glob.glob(os.path.join(out_dir, pattern)):
                     os.remove(path)
             for path in glob.glob(os.path.join(out_dir, "rl_model_*_steps")):
@@ -378,6 +474,8 @@ def main():
                     asset_file,
                     snapshot_model,
                     args.record_steps,
+                    args.record_views,
+                    shadow_size=args.shadow_size,
                     output_root=output_root,
                     github_original_method=args.github_original_method,
                 )
