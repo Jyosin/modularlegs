@@ -8,11 +8,11 @@ import time
 
 import gymnasium as gym
 from omegaconf import OmegaConf
-from stable_baselines3.common.monitor import Monitor
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import sbx
+from stable_baselines3.common.monitor import Monitor
 from cube_contact_task import CubePushSim, CubeTaskConfig
 from modularlegs.utils.files import load_cfg
 
