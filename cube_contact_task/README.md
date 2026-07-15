@@ -33,6 +33,27 @@ python cube_contact_task/train_quadruped_cube_goal.py \
   --total-steps 2000000
 ```
 
+Record synchronized dataset episodes after training:
+
+```bash
+python cube_contact_task/record_cube_goal_dataset.py \
+  --run-dir exp/quadruped_cube_goal_2m \
+  --output-dir exp/quadruped_cube_goal_2m/dataset_sample \
+  --episodes 1 \
+  --steps 500 \
+  --seed 0 \
+  --deterministic \
+  --views fixed follow front side top
+```
+
+Each recorded episode contains:
+
+- `videos/*.mp4`: multiple synchronized camera views for the same action sequence.
+- `rolloutN.npz`: standard arrays `observations`, `actions`, `rewards`, `dones`.
+- `states.npz`: `qpos`, `qvel`, `dof_pos`, `dof_vel`, `cube_xy`, `cube_vel_xy`, `target_xy`, `cube_target_distance`, `robot_xy`, `contact`, `success`, `frame_idx`.
+- `episode.obs.jsonl`: step-by-step JSON sidecar.
+- `metadata.json`: model/config paths, cube start/end coordinates, target coordinates, distance change, video paths, and contact/success counts.
+
 The branch for this work is:
 
 ```bash
