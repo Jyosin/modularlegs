@@ -46,6 +46,20 @@ python cube_contact_task/record_cube_goal_dataset.py \
   --views fixed follow front side top
 ```
 
+Record matching shadow videos by using the same seed and a separate output directory:
+
+```bash
+python cube_contact_task/record_cube_goal_dataset.py \
+  --run-dir exp/quadruped_cube_goal_2m \
+  --output-dir exp/quadruped_cube_goal_2m/dataset_sample_shadow \
+  --episodes 1 \
+  --steps 500 \
+  --seed 0 \
+  --deterministic \
+  --views fixed follow front side top \
+  --shadow-size 4096
+```
+
 Each recorded episode contains:
 
 - `videos/*.mp4`: multiple synchronized camera views for the same action sequence.

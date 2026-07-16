@@ -44,14 +44,32 @@ def parse_args():
     parser.add_argument("--height", type=int, default=544)
     parser.add_argument("--fps", type=int, default=20)
     parser.add_argument("--device", default="cpu")
+    parser.add_argument(
+        "--shadow-size",
+        type=int,
+        default=0,
+        help="MuJoCo shadow map size. Default 0 records no-shadow videos; use 4096 for shadow videos.",
+    )
     return parser.parse_args()
 
 
-def make_no_shadow_xml(source_asset, output_dir):
+def make_record_xml(source_asset, output_dir, shadow_size):
     os.makedirs(output_dir, exist_ok=True)
-    xml_path = os.path.abspath(os.path.join(output_dir, "record_no_shadow.xml"))
+    suffix = "no_shadow" if shadow_size <= 0 else f"shadow_{shadow_size}"
+    xml_path = os.path.abspath(os.path.join(output_dir, f"record_{suffix}.xml"))
     compiler = XMLCompiler(source_asset)
-    compiler.remove_shadow()
+    if shadow_size <= 0:
+        compiler.remove_shadow()
+    else:
+        quality = compiler.root.find(".//visual/quality")
+        if quality is None:
+            from lxml import etree
+
+            visual = compiler.root.find(".//visual")
+            if visual is None:
+                visual = etree.SubElement(compiler.root, "visual")
+            quality = etree.SubElement(visual, "quality")
+        quality.set("shadowsize", str(shadow_size))
     compiler.save(xml_path)
     return xml_path
 
@@ -241,6 +259,7 @@ def record_episode(model, cfg, output_dir, episode_idx, args):
         "deterministic": args.deterministic,
         "steps_recorded": int(len(rollout_np["actions"])),
         "fps": args.fps,
+        "shadow_size": args.shadow_size,
         "views": args.views,
         "video_paths": video_paths,
         "model_path": os.path.abspath(args.model),
@@ -288,7 +307,7 @@ def main():
     cfg.sim.noisy_observations = False
     cfg.sim.noisy_init = False
     cfg.sim.randomize_ini_vel = False
-    cfg.sim.asset_file = make_no_shadow_xml(cfg.sim.asset_file, output_dir)
+    cfg.sim.asset_file = make_record_xml(cfg.sim.asset_file, output_dir, args.shadow_size)
 
     env_for_model = gym.wrappers.TimeLimit(CubePushSim(cfg, CubeTaskConfig()), max_episode_steps=args.steps)
     model = sbx.CrossQ.load(args.model, env=env_for_model, device=args.device)
