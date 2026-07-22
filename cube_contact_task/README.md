@@ -33,6 +33,30 @@ python cube_contact_task/train_quadruped_cube_goal.py \
   --total-steps 2000000
 ```
 
+Train vision-only policies from robot-centric cameras:
+
+```bash
+JAX_PLATFORMS=cpu MUJOCO_GL=egl PYOPENGL_PLATFORM=egl python cube_contact_task/train_quadruped_cube_vision_goal.py \
+  --output-dir exp/quadruped_cube_vision_goal_level_2m \
+  --total-steps 2000000 \
+  --seed 0 \
+  --camera-mode level
+
+JAX_PLATFORMS=cpu MUJOCO_GL=egl PYOPENGL_PLATFORM=egl python cube_contact_task/train_quadruped_cube_vision_goal.py \
+  --output-dir exp/quadruped_cube_vision_goal_mounted_2m \
+  --total-steps 2000000 \
+  --seed 0 \
+  --camera-mode mounted
+```
+
+Or start both server jobs in the background:
+
+```bash
+bash cube_contact_task/run_vision_training_server.sh
+```
+
+The vision policy does not receive robot position, cube position, or target position as numeric observations. It receives four robot-centric RGB views (`front back left right`) stitched horizontally. `level` keeps the camera horizon level using robot yaw; `mounted` follows the robot body's full orientation, so the view tilts as the robot moves.
+
 Record synchronized dataset episodes after training:
 
 ```bash
