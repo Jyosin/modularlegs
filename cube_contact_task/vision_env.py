@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import mujoco
 import numpy as np
 from gymnasium import ObservationWrapper
-from gymnasium.spaces import Box
+from gymnasium.spaces import Box, Dict
 
 
 @dataclass
@@ -18,6 +18,7 @@ class CubeVisionConfig:
     camera_distance: float = 0.45
     lookahead: float = 0.65
     camera_height: float = 0.22
+    include_proprioception: bool = True
 
 
 class CubeRobotVisionWrapper(ObservationWrapper):
@@ -33,10 +34,30 @@ class CubeRobotVisionWrapper(ObservationWrapper):
 
         height = self.vision_config.image_height
         width = self.vision_config.image_width * len(self.vision_config.views)
-        self.observation_space = Box(0, 255, shape=(height, width, 3), dtype=np.uint8)
+        self.image_space = Box(0, 255, shape=(height, width, 3), dtype=np.uint8)
+        if self.vision_config.include_proprioception:
+            self.observation_space = Dict(
+                {
+                    "image": self.image_space,
+                    "proprioception": Box(
+                        -np.inf,
+                        np.inf,
+                        shape=env.observation_space.shape,
+                        dtype=np.float32,
+                    ),
+                }
+            )
+        else:
+            self.observation_space = self.image_space
 
     def observation(self, observation):
-        return self._render_robot_views()
+        image = self._render_robot_views()
+        if not self.vision_config.include_proprioception:
+            return image
+        return {
+            "image": image,
+            "proprioception": np.asarray(observation, dtype=np.float32),
+        }
 
     def _render_robot_views(self):
         frames = [self._render_view(view_name) for view_name in self.vision_config.views]

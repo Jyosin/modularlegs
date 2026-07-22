@@ -42,6 +42,11 @@ def parse_args():
     parser.add_argument("--learning-starts", type=int, default=10000)
     parser.add_argument("--buffer-size", type=int, default=50000)
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument(
+        "--no-proprioception",
+        action="store_true",
+        help="Use only images. By default the policy also receives robot proprioception.",
+    )
     return parser.parse_args()
 
 
@@ -74,6 +79,7 @@ def make_env(cfg, args):
         image_width=args.image_width,
         views=tuple(args.views),
         camera_mode=args.camera_mode,
+        include_proprioception=not args.no_proprioception,
     )
     env = CubePushSim(cfg, task_cfg)
     env = CubeRobotVisionWrapper(env, vision_cfg)
@@ -95,7 +101,12 @@ def main():
                 "image_height": args.image_height,
                 "image_width": args.image_width,
                 "views": args.views,
-                "observation": "robot_centric_rgb_images_only",
+                "include_proprioception": not args.no_proprioception,
+                "observation": (
+                    "robot_centric_rgb_images_plus_proprioception"
+                    if not args.no_proprioception
+                    else "robot_centric_rgb_images_only"
+                ),
             }
         ),
         os.path.join(output_dir, "vision_config.yaml"),
@@ -107,8 +118,9 @@ def main():
             shutil.copy2(args.asset_file, copied_asset)
 
     env = make_env(cfg, args)
+    policy = "MultiInputPolicy" if not args.no_proprioception else "CnnPolicy"
     model = sbx.CrossQ(
-        "CnnPolicy",
+        policy,
         env,
         verbose=1,
         tensorboard_log=output_dir,
