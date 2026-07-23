@@ -12,6 +12,7 @@ from omegaconf import OmegaConf
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import sbx
+from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 
 from cube_contact_task import CubePushSim, CubeRobotVisionWrapper, CubeTaskConfig, CubeVisionConfig
@@ -42,6 +43,7 @@ def parse_args():
     parser.add_argument("--learning-starts", type=int, default=10000)
     parser.add_argument("--buffer-size", type=int, default=50000)
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--checkpoint-freq", type=int, default=100000)
     parser.add_argument(
         "--no-proprioception",
         action="store_true",
@@ -130,9 +132,18 @@ def main():
         gradient_steps=1,
         seed=args.seed,
     )
+    callbacks = []
+    if args.checkpoint_freq > 0:
+        callbacks.append(
+            CheckpointCallback(
+                save_freq=args.checkpoint_freq,
+                save_path=output_dir,
+                name_prefix="rl_model",
+            )
+        )
 
     start = time.time()
-    model.learn(total_timesteps=args.total_steps, progress_bar=False)
+    model.learn(total_timesteps=args.total_steps, progress_bar=False, callback=callbacks)
     model.save(os.path.join(output_dir, "rl_model_last"))
     env.close()
 
