@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import mujoco
 import numpy as np
 from gymnasium import ObservationWrapper
-from gymnasium.spaces import Box, Dict
+from gymnasium.spaces import Box
 
 
 @dataclass
@@ -19,6 +19,7 @@ class CubeVisionConfig:
     lookahead: float = 0.65
     camera_height: float = 0.22
     include_proprioception: bool = True
+    proprioception_clip: float = 5.0
 
 
 class CubeRobotVisionWrapper(ObservationWrapper):
@@ -34,30 +35,15 @@ class CubeRobotVisionWrapper(ObservationWrapper):
 
         height = self.vision_config.image_height
         width = self.vision_config.image_width * len(self.vision_config.views)
-        self.image_space = Box(0, 255, shape=(height, width, 3), dtype=np.uint8)
-        if self.vision_config.include_proprioception:
-            self.observation_space = Dict(
-                {
-                    "image": self.image_space,
-                    "proprioception": Box(
-                        -np.inf,
-                        np.inf,
-                        shape=env.observation_space.shape,
-                        dtype=np.float32,
-                    ),
-                }
-            )
-        else:
-            self.observation_space = self.image_space
+        channels = 4 if self.vision_config.include_proprioception else 3
+        self.observation_space = Box(0, 255, shape=(height, width, channels), dtype=np.uint8)
 
     def observation(self, observation):
         image = self._render_robot_views()
         if not self.vision_config.include_proprioception:
             return image
-        return {
-            "image": image,
-            "proprioception": np.asarray(observation, dtype=np.float32),
-        }
+        proprio_map = self._encode_proprioception(observation, image.shape[:2])
+        return np.concatenate([image, proprio_map[..., None]], axis=2).astype(np.uint8)
 
     def _render_robot_views(self):
         frames = [self._render_view(view_name) for view_name in self.vision_config.views]
@@ -133,6 +119,22 @@ class CubeRobotVisionWrapper(ObservationWrapper):
         y_idx = np.linspace(0, height - 1, target_h).astype(np.int64)
         x_idx = np.linspace(0, width - 1, target_w).astype(np.int64)
         return frame[np.ix_(y_idx, x_idx)]
+
+    def _encode_proprioception(self, observation, image_shape):
+        height, width = image_shape
+        proprio = np.asarray(observation, dtype=np.float32).reshape(-1)
+        if proprio.size == 0:
+            return np.zeros((height, width), dtype=np.uint8)
+
+        clip = self.vision_config.proprioception_clip
+        encoded = np.clip(proprio, -clip, clip)
+        encoded = ((encoded / clip) * 0.5 + 0.5) * 255.0
+        encoded = encoded.astype(np.uint8)
+
+        x_idx = np.floor(np.linspace(0, encoded.size, width, endpoint=False)).astype(np.int64)
+        x_idx = np.clip(x_idx, 0, encoded.size - 1)
+        row = encoded[x_idx]
+        return np.repeat(row[None, :], height, axis=0)
 
 
 def _yaw_from_wxyz(quat):

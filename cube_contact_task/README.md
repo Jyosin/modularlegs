@@ -55,7 +55,7 @@ Or start both server jobs in the background:
 bash cube_contact_task/run_vision_training_server.sh
 ```
 
-The default vision policy receives four robot-centric RGB views (`front back left right`) stitched horizontally plus robot proprioception. Proprioception is the existing robot body/joint state observation: projected gravity, body angular velocity, joint positions, joint velocities, and previous action history according to the configured observation version. It still does not receive cube position or target position as numeric observations. `level` keeps the camera horizon level using robot yaw; `mounted` follows the robot body's full orientation, so the view tilts as the robot moves.
+The default vision policy receives four robot-centric RGB views (`front back left right`) stitched horizontally plus robot proprioception encoded as a fourth image channel. Proprioception is the existing robot body/joint state observation: projected gravity, body angular velocity, joint positions, joint velocities, and previous action history according to the configured observation version. It still does not receive cube position or target position as numeric observations. `level` keeps the camera horizon level using robot yaw; `mounted` follows the robot body's full orientation, so the view tilts as the robot moves.
 
 For a pure image ablation, add:
 

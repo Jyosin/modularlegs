@@ -103,7 +103,7 @@ def main():
                 "views": args.views,
                 "include_proprioception": not args.no_proprioception,
                 "observation": (
-                    "robot_centric_rgb_images_plus_proprioception"
+                    "robot_centric_rgb_images_plus_proprioception_channel"
                     if not args.no_proprioception
                     else "robot_centric_rgb_images_only"
                 ),
@@ -118,9 +118,8 @@ def main():
             shutil.copy2(args.asset_file, copied_asset)
 
     env = make_env(cfg, args)
-    policy = "MultiInputPolicy" if not args.no_proprioception else "CnnPolicy"
     model = sbx.CrossQ(
-        policy,
+        "CnnPolicy",
         env,
         verbose=1,
         tensorboard_log=output_dir,
