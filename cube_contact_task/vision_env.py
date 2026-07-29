@@ -18,6 +18,10 @@ class CubeVisionConfig:
     camera_distance: float = 0.45
     lookahead: float = 0.65
     camera_height: float = 0.22
+    front_overhead: bool = True
+    front_overhead_distance: float = 1.25
+    front_overhead_elevation: float = -89.0
+    front_overhead_height: float = 0.05
     include_proprioception: bool = True
     proprioception_clip: float = 5.0
 
@@ -58,6 +62,16 @@ class CubeRobotVisionWrapper(ObservationWrapper):
         direction = self._view_direction(view_name)
         azimuth, elevation = self._direction_to_camera_angles(direction)
         robot_pos = np.asarray(base_env.data.qpos[:3], dtype=np.float64)
+        if view_name == "front" and self.vision_config.front_overhead:
+            lookat = robot_pos.copy()
+            lookat[2] = robot_pos[2] + self.vision_config.front_overhead_height
+            cam.lookat[:] = lookat
+            cam.distance = self.vision_config.front_overhead_distance
+            cam.azimuth = azimuth
+            cam.elevation = self.vision_config.front_overhead_elevation
+            frame = base_env.render()
+            return self._center_crop_or_downsample(frame)
+
         lookat = robot_pos + direction * self.vision_config.lookahead
         lookat[2] = robot_pos[2] + self.vision_config.camera_height
 

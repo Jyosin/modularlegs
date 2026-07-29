@@ -103,6 +103,9 @@ def main():
                 "image_height": args.image_height,
                 "image_width": args.image_width,
                 "views": args.views,
+                "front_overhead": True,
+                "front_overhead_distance": 1.25,
+                "front_overhead_elevation": -89.0,
                 "include_proprioception": not args.no_proprioception,
                 "observation": (
                     "robot_centric_rgb_images_plus_proprioception_channel"
