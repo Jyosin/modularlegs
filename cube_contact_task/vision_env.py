@@ -83,11 +83,12 @@ class CubeRobotVisionWrapper(ObservationWrapper):
         return self._center_crop_or_downsample(frame)
 
     def _view_direction(self, view_name):
+        # The quadruped asset's visual forward axis is +Y, not +X.
         local = {
-            "front": np.array([1.0, 0.0, 0.0], dtype=np.float64),
-            "back": np.array([-1.0, 0.0, 0.0], dtype=np.float64),
-            "left": np.array([0.0, 1.0, 0.0], dtype=np.float64),
-            "right": np.array([0.0, -1.0, 0.0], dtype=np.float64),
+            "front": np.array([0.0, 1.0, 0.0], dtype=np.float64),
+            "back": np.array([0.0, -1.0, 0.0], dtype=np.float64),
+            "left": np.array([-1.0, 0.0, 0.0], dtype=np.float64),
+            "right": np.array([1.0, 0.0, 0.0], dtype=np.float64),
         }.get(view_name)
         if local is None:
             raise ValueError(f"Unsupported view '{view_name}'. Use front/back/left/right.")
