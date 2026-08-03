@@ -121,6 +121,12 @@ def save_episode(args, cfg, vision_cfg, model, episode_idx):
             os.path.join(video_dir, "joint_state_panel.mp4"), fps=args.fps, macro_block_size=1
         ),
     }
+    for view in vision_cfg.views:
+        writers[f"analysis_{view}"] = imageio.get_writer(
+            os.path.join(video_dir, f"analysis_{view}.mp4"),
+            fps=args.fps,
+            macro_block_size=1,
+        )
     rollout = defaultdict(list)
     states = defaultdict(list)
     cube_start_xy = np.asarray(info["cube_xy"], dtype=np.float32)
@@ -134,6 +140,8 @@ def save_episode(args, cfg, vision_cfg, model, episode_idx):
                 writers["vision_rgb"].append_data(vision_obs[..., :3])
                 proprio = vision_obs[..., 3] if vision_obs.shape[-1] > 3 else np.zeros(vision_obs.shape[:2], dtype=np.uint8)
                 writers["proprioception_channel"].append_data(np.repeat(proprio[..., None], 3, axis=2))
+                for view in vision_cfg.views:
+                    writers[f"analysis_{view}"].append_data(env.env.render_view(view, resize=False))
 
                 apply_camera(base_env, args.state_view)
                 writers[f"state_shadow_{args.state_view}"].append_data(base_env.render())
@@ -204,6 +212,10 @@ def save_episode(args, cfg, vision_cfg, model, episode_idx):
             "proprioception_channel": "videos/proprioception_channel.mp4",
             "state_shadow": f"videos/state_shadow_{args.state_view}.mp4",
             "joint_state_panel": "videos/joint_state_panel.mp4",
+            "analysis_views": {
+                view: f"videos/analysis_{view}.mp4"
+                for view in vision_cfg.views
+            },
         },
     }
     with open(os.path.join(episode_dir, "metadata.json"), "w", encoding="utf-8") as f:

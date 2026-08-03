@@ -50,10 +50,10 @@ class CubeRobotVisionWrapper(ObservationWrapper):
         return np.concatenate([image, proprio_map[..., None]], axis=2).astype(np.uint8)
 
     def _render_robot_views(self):
-        frames = [self._render_view(view_name) for view_name in self.vision_config.views]
+        frames = [self.render_view(view_name) for view_name in self.vision_config.views]
         return np.concatenate(frames, axis=1).astype(np.uint8)
 
-    def _render_view(self, view_name):
+    def render_view(self, view_name, resize=True):
         base_env = self.unwrapped
         viewer = base_env.mujoco_renderer._get_viewer("rgb_array")
         cam = viewer.cam
@@ -70,7 +70,7 @@ class CubeRobotVisionWrapper(ObservationWrapper):
             cam.azimuth = azimuth
             cam.elevation = self.vision_config.front_overhead_elevation
             frame = base_env.render()
-            return self._center_crop_or_downsample(frame)
+            return self._center_crop_or_downsample(frame) if resize else frame
 
         lookat = robot_pos + direction * self.vision_config.lookahead
         lookat[2] = robot_pos[2] + self.vision_config.camera_height
@@ -80,7 +80,7 @@ class CubeRobotVisionWrapper(ObservationWrapper):
         cam.azimuth = azimuth
         cam.elevation = elevation
         frame = base_env.render()
-        return self._center_crop_or_downsample(frame)
+        return self._center_crop_or_downsample(frame) if resize else frame
 
     def _view_direction(self, view_name):
         # The quadruped asset's visual forward axis is +Y, not +X.

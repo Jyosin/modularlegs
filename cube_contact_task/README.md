@@ -93,6 +93,7 @@ python cube_contact_task/record_cube_goal_dataset.py \
 Each recorded episode contains:
 
 - `videos/*.mp4`: multiple synchronized camera views for the same action sequence.
+- `videos/analysis_front.mp4`, `analysis_back.mp4`, `analysis_left.mp4`, `analysis_right.mp4`: clear per-view debug videos for inspecting the visual input camera directions. These are not fed to the policy.
 - `rolloutN.npz`: standard arrays `observations`, `actions`, `rewards`, `dones`.
 - `states.npz`: `qpos`, `qvel`, `dof_pos`, `dof_vel`, `cube_xy`, `cube_vel_xy`, `target_xy`, `cube_target_distance`, `robot_xy`, `contact`, `success`, `frame_idx`.
 - `episode.obs.jsonl`: step-by-step JSON sidecar.
