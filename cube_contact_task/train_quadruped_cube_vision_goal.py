@@ -11,11 +11,12 @@ from omegaconf import OmegaConf
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import sbx
+from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 
 from cube_contact_task import CubePushSim, CubeRobotVisionWrapper, CubeTaskConfig, CubeVisionConfig
+from cube_contact_task.record_cube_goal_dataset import make_record_xml
 from modularlegs.utils.files import load_cfg
 
 
@@ -45,6 +46,12 @@ def parse_args():
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--checkpoint-freq", type=int, default=100000)
     parser.add_argument(
+        "--shadow-size",
+        type=int,
+        default=4096,
+        help="MuJoCo shadow framebuffer size; the source quadruped asset uses an unsupported 26384.",
+    )
+    parser.add_argument(
         "--no-proprioception",
         action="store_true",
         help="Use only images. By default the policy also receives robot proprioception.",
@@ -57,7 +64,7 @@ def make_cfg(args):
     output_dir = os.path.abspath(args.output_dir)
 
     cfg.logging.data_dir = output_dir
-    cfg.sim.asset_file = args.asset_file
+    cfg.sim.asset_file = make_record_xml(args.asset_file, output_dir, args.shadow_size)
     cfg.sim.render = False
     cfg.sim.render_size = [args.image_width, args.image_height]
     cfg.sim.randomize_orientation = False
@@ -70,6 +77,7 @@ def make_cfg(args):
     cfg.robot.randomize_start_pos = False
     cfg.trainer.total_steps = args.total_steps
     cfg.trainer.seed = args.seed
+    cfg.trainer.algorithm = "SAC"
     cfg.run_name = f"quadruped_cube_vision_goal_{args.camera_mode}"
     return cfg
 
@@ -100,6 +108,8 @@ def main():
         OmegaConf.create(
             {
                 "camera_mode": args.camera_mode,
+                "algorithm": "stable_baselines3.SAC",
+                "shadow_size": args.shadow_size,
                 "image_height": args.image_height,
                 "image_width": args.image_width,
                 "views": args.views,
@@ -123,7 +133,7 @@ def main():
             shutil.copy2(args.asset_file, copied_asset)
 
     env = make_env(cfg, args)
-    model = sbx.CrossQ(
+    model = SAC(
         "CnnPolicy",
         env,
         verbose=1,

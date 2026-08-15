@@ -33,16 +33,17 @@ python cube_contact_task/train_quadruped_cube_goal.py \
   --total-steps 2000000
 ```
 
-Train vision-only policies from robot-centric cameras:
+Train vision policies from robot-centric cameras. The vision trainer uses
+Stable-Baselines3 SAC because SBX CrossQ does not provide a CNN policy:
 
 ```bash
-JAX_PLATFORMS=cpu MUJOCO_GL=egl PYOPENGL_PLATFORM=egl python cube_contact_task/train_quadruped_cube_vision_goal.py \
+MUJOCO_GL=egl PYOPENGL_PLATFORM=egl python cube_contact_task/train_quadruped_cube_vision_goal.py \
   --output-dir exp/quadruped_cube_vision_goal_level_2m \
   --total-steps 2000000 \
   --seed 0 \
   --camera-mode level
 
-JAX_PLATFORMS=cpu MUJOCO_GL=egl PYOPENGL_PLATFORM=egl python cube_contact_task/train_quadruped_cube_vision_goal.py \
+MUJOCO_GL=egl PYOPENGL_PLATFORM=egl python cube_contact_task/train_quadruped_cube_vision_goal.py \
   --output-dir exp/quadruped_cube_vision_goal_mounted_2m \
   --total-steps 2000000 \
   --seed 0 \

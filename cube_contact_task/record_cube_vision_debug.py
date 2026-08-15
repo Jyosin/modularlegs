@@ -52,6 +52,20 @@ def load_vision_config(run_dir, args):
     )
 
 
+def load_model(model_path, env, device, run_dir):
+    vision_path = os.path.join(run_dir, "vision_config.yaml")
+    data = OmegaConf.load(vision_path) if os.path.exists(vision_path) else OmegaConf.create({})
+    algorithm = data.get("algorithm", "sbx.CrossQ")
+    if algorithm == "stable_baselines3.SAC":
+        from stable_baselines3 import SAC
+
+        return SAC.load(model_path, env=env, device=device)
+
+    import sbx
+
+    return sbx.CrossQ.load(model_path, env=env, device=device)
+
+
 def make_cfg(args):
     cfg = OmegaConf.load(os.path.join(args.run_dir, "running_config.yaml"))
     cfg.trainer.mode = "play"
@@ -236,10 +250,8 @@ def main():
     cfg = make_cfg(args)
     model = None
     if args.model is not None:
-        import sbx
-
         model_env, _ = make_env(cfg, vision_cfg, args.steps)
-        model = sbx.CrossQ.load(args.model, env=model_env, device=args.device)
+        model = load_model(args.model, model_env, args.device, args.run_dir)
         model_env.close()
 
     summaries = []
