@@ -14,7 +14,6 @@ from omegaconf import OmegaConf
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import sbx
 from cube_contact_task import CubePushSim, CubeTaskConfig
 from modularlegs.utils.model import XMLCompiler
 
@@ -310,6 +309,8 @@ def main():
     cfg.sim.asset_file = make_record_xml(cfg.sim.asset_file, output_dir, args.shadow_size)
 
     env_for_model = gym.wrappers.TimeLimit(CubePushSim(cfg, CubeTaskConfig()), max_episode_steps=args.steps)
+    import sbx
+
     model = sbx.CrossQ.load(args.model, env=env_for_model, device=args.device)
     env_for_model.close()
 

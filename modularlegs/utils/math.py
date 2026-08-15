@@ -4,14 +4,12 @@ import pdb
 import numpy as np
 # from omegaconf import OmegaConf
 import torch
-try:
-    import jax.numpy as jnp
-except ImportError:
-    print("JAX is not installed. Please install JAX to use the JAX version of the math functions.")
 from modularlegs import LEG_ROOT_DIR
 
 
 def quat_rotate_inverse_jax(q, v):
+    import jax.numpy as jnp
+
     shape = q.shape
     q_w = q[:, -1]
     q_vec = q[:, :3]
@@ -21,6 +19,8 @@ def quat_rotate_inverse_jax(q, v):
     return a - b + c
 
 def quat_rotate_inverse_jax_wxyz(q, v):
+    import jax.numpy as jnp
+
     shape = q.shape
     q_w = q[:, 0]  # Extract w component
     q_vec = q[:, 1:]  # Extract x, y, z components
@@ -480,6 +480,7 @@ def normalize_angle(angle):
     return angle % (2 * np.pi)
 
 if __name__ == "__main__":
+    import jax.numpy as jnp
 
     # q = quat_rotate_inverse_batch(torch.tensor([[1,2,3,9.1]]), torch.tensor([[2,3,3.]]))
     # print(q)
@@ -515,4 +516,3 @@ if __name__ == "__main__":
     v = jnp.array([[2,3,3.]])
     result = quat_rotate_inverse_jax_wxyz(q, v)
     print(result)
-
