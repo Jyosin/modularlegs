@@ -1,0 +1,41 @@
+{
+  "episode_index": 0,
+  "seed": 20260815,
+  "steps_recorded": 100,
+  "model_path": null,
+  "action_source": "random",
+  "camera_mode": "level",
+  "vision_views": [
+    "front",
+    "back",
+    "left",
+    "right"
+  ],
+  "shadow_size": 4096,
+  "cube_start_xy": [
+    -0.2901153564453125,
+    -0.5221040844917297
+  ],
+  "cube_end_xy": [
+    -0.2898293137550354,
+    -0.5223065614700317
+  ],
+  "target_xy": [
+    0.11915165930986404,
+    -0.4843854606151581
+  ],
+  "contact_steps": 0,
+  "success_steps": 0,
+  "videos": {
+    "vision_rgb": "videos/vision_rgb.mp4",
+    "proprioception_channel": "videos/proprioception_channel.mp4",
+    "state_shadow": "videos/state_shadow_follow.mp4",
+    "joint_state_panel": "videos/joint_state_panel.mp4",
+    "analysis_views": {
+      "front": "videos/analysis_front.mp4",
+      "back": "videos/analysis_back.mp4",
+      "left": "videos/analysis_left.mp4",
+      "right": "videos/analysis_right.mp4"
+    }
+  }
+}

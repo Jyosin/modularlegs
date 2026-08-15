@@ -14,7 +14,6 @@ from omegaconf import OmegaConf
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import sbx
 from cube_contact_task import CubePushSim, CubeRobotVisionWrapper, CubeTaskConfig, CubeVisionConfig
 from cube_contact_task.record_cube_goal_dataset import apply_camera, make_record_xml, robot_joint_state
 
@@ -237,6 +236,8 @@ def main():
     cfg = make_cfg(args)
     model = None
     if args.model is not None:
+        import sbx
+
         model_env, _ = make_env(cfg, vision_cfg, args.steps)
         model = sbx.CrossQ.load(args.model, env=model_env, device=args.device)
         model_env.close()
